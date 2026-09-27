@@ -47,6 +47,21 @@ Estas reglas existen porque un `Set-Content` de PowerShell 5.1 dejó un archivo 
 - Si un `git diff --stat` crece mucho más que el cambio pedido, **algo está mal**: es casi siempre BOM o fines de línea. Revertir con `git checkout -- <archivo>` y rehacer con la herramienta de edición. No intentar reparar el archivo a mano.
 - Comprobación rápida tras editar texto con acentos, antes de commitear: los primeros bytes deben ser los del primer carácter del archivo, y el archivo no debe contener `Ã` ni `â€`.
 
+## Comandos verificados en este entorno
+
+Descubiertos a pulso en esta máquina, con los que respondieron y los que no. La memoria de una conversación no sobrevive entre sesiones, así que lo que costó tiempo queda escrito acá. Un comando que se cuelga no es un detalle: hace perder minutos de timeout y, peor, invita a concluir sin dato.
+
+- **`az vm list-skus` se cuelga. No usarlo.** Probado con `--all` y con `--size Standard_DS2_v2` y `--size Standard_B2s_v2`: más de 120 s sin respuesta, y con `--all` pasó de cinco minutos. Se corta con Ctrl+C.
+  - **Para cuota por familia:** `az vm list-usage --location <region> --query "[?contains(name.value, 'PREFIJO')].{familia:name.value, limite:limit, enUso:currentValue}" -o tsv | Sort-Object`. Responde en segundos. Filtrar por prefijo devuelve **todas** las familias que matchean, que es justo lo que hace visible un nombre mal escrito.
+  - **Para el catálogo y el campo `family`:** `az rest --method get --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Compute/skus?api-version=2021-07-01`$filter=location%20eq%20'<region>'"`. Devuelve una fila por juego de capabilities, así que hay que acotar con `starts_with(name, 'Standard_B2s')` en el `--query`.
+  - `quota_usage_check` del MCP de Azure responde al instante para cuota **por SKU**, pero su tabla no lista todos los SKUs: omitió `Standard_DS2_v2`, que sí existe y sí tiene cuota (H15). **La ausencia en esa tabla no prueba falta de cuota.**
+
+- **El nombre de la familia de un SKU se lee SIEMPRE del catálogo, nunca de un documento, un plan ni de la memoria.** `Standard_D2as_v4` factura en `standardDASv4Family`; `Standard_Da_v4` factura en `standardDAv4Family`. Una letra de diferencia y son dos familias con cuotas distintas. Copiar el nombre de la familia desde el plan que se pretende verificar es como consultar la fuente equivocada: devuelve un 0 muy convincente (H14).
+
+- **En `az vm list-usage`, `name` es un objeto y `limit` es un string.** Filtrar por `name.value`, no por `name`. Y `limit` / `currentValue` son cadenas planas: usar `limit.localValue` devuelve `None`, que se lee como "sin cuota" cuando la cuota es real. Esto ya costó una tabla entera de ceros falsos.
+
+- **`az policy assignment show`: el parámetro de la política de regiones es `listOfAllowedLocations`, no `listOfAllowedRegions`.** Con el nombre equivocado la consulta devuelve `null`, que se lee como "sin restricción" si no se mira el JSON crudo.
+
 ## Entorno del humano
 
 - El equipo trabaja en Windows. Los bloques bash del plan se corren en Git Bash, WSL o Azure Cloud Shell; si el agente propone un comando para PowerShell, lo traduce (variables, continuación de línea con acento grave, comillas).
