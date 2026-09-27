@@ -143,12 +143,11 @@ def construir_modelo(descripcion: dict[str, Any]) -> Any:
         ValueError: Si el tipo de la descripcion no es un tipo de asset valido.
 
     """
-    from azure.ai.ml.constants import AssetTypes
     from azure.ai.ml.entities import Model
 
     return Model(
         path=descripcion["path"],
-        type=AssetTypes(descripcion["type"]),
+        type=descripcion["type"],
         name=descripcion["name"],
         description=descripcion["description"],
         tags=descripcion["tags"],
