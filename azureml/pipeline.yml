@@ -18,7 +18,7 @@ inputs:
     mode: download
   limite: 340
   autor: sirena
-  rama: ""
+  rama: sirena
   key_vault_url: https://mlwsirenkeyvault18607254.vault.azure.net
   # El workspace todavia no existe cuando se escribe el pipeline, asi que estos
   # tres no llevan default: se pasan al crear el job.
