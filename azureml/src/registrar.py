@@ -274,10 +274,10 @@ def _cliente(subscription_id: str, resource_group: str, workspace: str) -> Any:
 
     """
     from azure.ai.ml import MLClient
-    from azure.identity import DefaultAzureCredential
+    from azure.identity import ManagedIdentityCredential
 
     return MLClient(
-        credential=DefaultAzureCredential(),
+        credential=ManagedIdentityCredential(),
         subscription_id=subscription_id,
         resource_group_name=resource_group,
         workspace_name=workspace,

@@ -47,10 +47,10 @@ def _leer_secreto(vault_url: str) -> str:
         Valor del secreto, que el llamador no debe imprimir.
 
     """
-    from azure.identity import DefaultAzureCredential
+    from azure.identity import ManagedIdentityCredential
     from azure.keyvault.secrets import SecretClient
 
-    cliente = SecretClient(vault_url=vault_url, credential=DefaultAzureCredential())
+    cliente = SecretClient(vault_url=vault_url, credential=ManagedIdentityCredential())
     return cliente.get_secret(NOMBRE_SECRETO).value
 
 
