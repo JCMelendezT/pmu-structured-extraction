@@ -27,6 +27,14 @@ inputs:
     default: ""
   key_vault_url:
     type: string
+  # El workspace todavia no existe cuando se escribe el pipeline, asi que estos
+  # tres no llevan default: se pasan al crear el job.
+  subscription_id:
+    type: string
+  resource_group:
+    type: string
+  workspace:
+    type: string
 
 jobs:
   validar:
@@ -67,6 +75,15 @@ jobs:
   registrar:
     display_name: Registrar configuracion ganadora
     component: ./components/sirena_registrar_configuracion.yml
+    # La identidad va en el job, no en el componente: el esquema del command
+    # component no tiene clave identity. Sin esto el job usaria AMLToken, que
+    # no tiene permisos de escritura sobre el registro de modelos.
+    identity:
+      type: managed
     inputs:
       decision: ${{parent.jobs.comparar.outputs.decision}}
-      key_vault_url: ${{parent.inputs.key_vault_url}}
+      resultados_a: ${{parent.jobs.evaluar_20b.outputs.resultados}}
+      resultados_b: ${{parent.jobs.evaluar_120b.outputs.resultados}}
+      subscription_id: ${{parent.inputs.subscription_id}}
+      resource_group: ${{parent.inputs.resource_group}}
+      workspace: ${{parent.inputs.workspace}}

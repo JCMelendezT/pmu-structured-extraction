@@ -155,7 +155,7 @@ Activos del workspace: Data asset gold_v1, Environment sirena-eval, Key Vault (G
 
 | Componente | Entrada | Salida | Código que ejecuta |
 | --- | --- | --- | --- |
-| `validar_corpus` | Data asset `gold_v1` (carpeta con `eval.jsonl`, `dev.jsonl`, `README_gold_v1.md`) | `eval.jsonl` validado + `manifest.json` con conteos | Script nuevo: recalcula SHA-256 y lo compara con el README; falla el job si no coincide |
+| `validar_corpus` | Data asset `gold_v1` (carpeta con los tres JSONL — `dev.jsonl`, `eval.jsonl`, `gold_standard_v1.jsonl` — y `README_gold_v1.md`, que trae los SHA-256 esperados) | `eval.jsonl` validado + `manifest.json` con conteos | Script nuevo: recalcula el SHA-256 de los tres JSONL y los compara con el README; falla el job si alguno no coincide |
 | `evaluar_modelo` (×2, en paralelo) | `eval.jsonl`, parámetro `modelo`, parámetro `limite` | `evaluacion.md`, `metricas.json` | `python -m inference.evaluacion` del repo, con `INFERENCE_MODELO` fijado por parámetro; `registro.py` publica parámetros, métricas y artefactos en MLflow |
 | `comparar_modelos` | Los dos `metricas.json` | `decision.json` (ganador y razón) | Script nuevo: gana el mayor F1 macro de `tipo_evento` y `es_reporte_accionable`; si la diferencia es menor a 2 puntos gana el más barato (20b) |
 | `registrar_config` | `decision.json` + `config/ontologia.yaml` | Modelo `sirena-extractor:N` en el registro | Script nuevo: registra un modelo de tipo `custom_model` con la ontología y los prompts, y tags `modelo`, `f1_tipo_evento`, `latencia_p95_ms`, `prompt_hash`, `job_id` |
@@ -347,6 +347,14 @@ az keyvault secret set --vault-name $KV --name groq-api-key --value "<GROQ_API_K
 PID=$(az ml compute show --name cpu-sirena --query identity.principal_id -o tsv)
 az keyvault set-policy --name $KV --object-id $PID --secret-permissions get
 # Si el Key Vault usa RBAC: az role assignment create --assignee $PID --role "Key Vault Secrets User" --scope <id del Key Vault>
+
+# Permiso de escritura en el registro de modelos para la identidad del cluster
+# El job registrar escribe el modelo ganador con MLClient y su credencial
+# administrada. Sin este rol falla con Forbidden al crear el modelo, aunque el
+# job declare identity: managed. El alcance es el workspace, no la suscripcion,
+# asi que AzureML Data Scientist no abre nada fuera del microproyecto.
+az role assignment create --assignee $PID --role "AzureML Data Scientist" \
+  --scope $(az ml workspace show --query id -o tsv)
 ```
 
 Con `--max-instances 2` las dos evaluaciones corren en paralelo; si la cuota no alcanza, dejar 1 y correrán una tras otra. Si `Standard_DS2_v2` no está disponible, probar `Standard_D2as_v4` o `Standard_DS1_v2`. Plan B del secreto si la identidad da problemas: pasar la clave como variable de entorno al lanzar el job y rotarla después de la sustentación (queda visible para quien lea el job).

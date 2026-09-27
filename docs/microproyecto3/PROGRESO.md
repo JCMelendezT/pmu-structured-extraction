@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6, A7 y A8 hechos; A3 revertido y absorbido en A5; A9 pendiente. **Con A8 la Etapa A queda cerrada salvo A9**, y A9 es código, no Azure.
+Estado de este documento: **Etapa A cerrada.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6, A7, A8 y A9 hechos; A3 revertido y absorbido en A5. **La Etapa A está completa y es código, no Azure**: lo único que falta es correrlo, y eso es la Etapa B. Sigue abierto H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`; no se corrigió en silencio porque es un cambio de contrato del equipo, no un refactor.
 
 ---
 
@@ -160,12 +160,20 @@ Estado: **8 hechos, 1 pendiente**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/src/registrar.py` y sus pruebas.
 - **Criterio de aceptación:** lee `decision.json`, registra `sirena-extractor` en el registro de modelos con la ontología y los hashes de prompts como artefactos, y los tags `modelo`, `f1_tipo_evento`, `latencia_p95_ms`, `prompt_hash` y `job_id`. Sale con codigo 0 si registró, 1 si no pudo decidir.
 - **Por que salio de A8:** el plan lo pide en la tabla de cambios al repositorio (L503, `azureml/components/registrar_config.yml` + `azureml/src/registrar.py`), pero el ticket A8 solo cubria los cinco YAML. Se dejo el componente escrito y apuntando al script en vez de inventar un stub: un stub que "funciona" y no registra nada daria un job en verde mintiendo, que es peor que un job en rojo diciendo la verdad.
-- **Riesgo propio:** `mlflow.pyfunc.log_model` necesita un `loader_module`, que el repo no tiene. Es la parte con mas probabilidad de fallar en la primera corrida real, asi que conviene probarlo contra un workspace temprano y no al final de la Fase 6.
-- **Confirmación humana:** no para escribirlo. **Sí** para ejecutarlo contra el workspace de Azure.
+- **Riesgo propio — cerrado, no era el riesgo real.** El ticket daba por hecho `mlflow.pyfunc.log_model`, que necesita un `loader_module` que el repo no tiene. El plan L161 ya pedia `custom_model`, y esa es la via correcta: `MLClient.models.create_or_update` con `AssetTypes.CUSTOM_MODEL` sobre la carpeta. No hay `loader_module`, no hay pyfunc, no hay que inventar un modulo de carga para un artefacto que no es un modelo entrenado.
+- **Tres hallazgos que cambiaron la implementacion, los tres verificados contra la documentacion:**
+  - **`identity` no existe en el esquema del command component.** Es clave del job, no del componente: vive en `azureml/pipeline.yml` sobre `jobs.registrar`. Ponerla en el YAML del componente pasa la revision del autor y falla al crear el job. Hay una prueba que verifica que el componente **no** la declare.
+  - **El `MLClient` no deduce el workspace dentro de un job.** Los defaults del `az configure` viven en la maquina que submits, no en el contenedor. Por eso `subscription_id`, `resource_group` y `workspace` son inputs del pipeline, sin default porque el workspace todavia no existe.
+  - **`decision.json` no alcanza para armar el paquete.** Dice quien gano, pero el informe vive en la carpeta de resultados de ese modelo y `comparar.py` no copia los informes. Por eso `registrar` recibe `resultados_a` y `resultados_b`: los lee para ubicar el `informe.md` cuyo `metricas.json` dice ser el ganador. Si no aparece, el job falla en vez de registrar un paquete sin informe.
+- **`azure-ai-ml` va en el `Dockerfile`, no en `requirements.txt`.** Ese archivo se regenera con `uv export -o` y una dependencia agregada a mano desaparece en la siguiente regeneracion. Queda documentado en el propio `Dockerfile` para que nadie la vuelva a agregar abajo.
+- **El componente de registro ya no recibe `key_vault_url`.** Registrar no llama a Groq ni lee ningun secreto: solo escribe en el registro de modelos. El input se elimino en vez de dejarlo por costumbre.
+- **Estado:** **hecho**. 7 pruebas de `registrar.py` con el `MLClient` doble, sin red, y 2 mas en los YAML. El SDK se importa adentro de `construir_modelo`, no al tope del modulo, para que las pruebas corran sin `azure-ai-ml` en el entorno de desarrollo. Los hashes de `prompts.json` usan el mismo formato que `inference.registro` guarda como parametros de MLflow, y hay una prueba que falla si los dos se desalinean.
+- **Lo que sigue sin probar:** la linea que llama `create_or_update` con el SDK real no tiene prueba unitaria, porque el SDK no es dependencia del entorno de desarrollo. Se ejercita en la primera corrida real.
+- **Confirmación humana:** no para escribirlo. **Sí** para ejecutarlo contra el workspace de Azure, y para el rol de B10.
 
 ## 4. Etapa B — Azure, fases 0 a 4
 
-Estado: **9 pendientes**. Todos los comandos de creación pasan por la puerta de confirmación.
+Estado: **10 pendientes**. Todos los comandos de creación pasan por la puerta de confirmación.
 
 ### B1. Lectura de regiones, cuota y proveedores
 
@@ -223,6 +231,15 @@ Estado: **9 pendientes**. Todos los comandos de creación pasan por la puerta de
 - **Toca:** sin recursos nuevos.
 - **Criterio de aceptación:** evidencia de cada fase registrada en este archivo; `cpu-sirena` queda con `min-instances 0` y deallocated.
 - **Confirmación humana:** **sí** para el `deallocate`.
+
+### B10. Rol `AzureML Data Scientist` para la identidad del clúster
+
+- **Objetivo:** que el job `registrar` pueda crear el modelo ganador en el registro del workspace. Sin este rol el job falla con `Forbidden` al escribir, aunque declare `identity: managed`: la identidad administrada delega el permiso, no lo tiene por sí sola.
+- **Toca:** principal de la identidad de `cpu-sirena` (el mismo `PID` de B7), alcance el workspace, rol `AzureML Data Scientist`.
+- **Alcance, y por qué este rol:** va sobre el **workspace**, no sobre el grupo ni la suscripción, así que no abre nada fuera del microproyecto. Es el rol mínimo que permite crear modelos; `Reader` no alcanza porque el job escribe.
+- **Criterio de aceptación:** `az role assignment list --scope $(az ml workspace show --query id -o tsv) --query "[].{principal:principalName, rol:roleDefinitionName}" -o table` muestra el principal de la identidad del clúster con rol `AzureML Data Scientist`, y ninguna asignación con alcance de suscripción.
+- **Confirmación humana:** **sí, siempre**. Cambia permisos, no crea recursos: ver la categoría específica en `REGLAS_AGENTE.md`.
+- **Se prueba en la Fase 6.** Igual que B7, este ticket solo puede dejar constancia de que el permiso quedó otorgado. Que la escritura funcione de verdad se ve cuando la corrida corta termina en verde con el modelo registrado.
 
 ## 5. Etapa C — Componentes y pipeline (fases 5 y 6)
 
@@ -315,7 +332,7 @@ Estado: **3 pendientes**. E1 y E2 solo arranca si el equipo decide incluirlos.
 
 ## 8. Etapa F — Materiales de entrega
 
-Estado: **5 pendientes**. Ninguna toca Azure.
+Estado: **6 pendientes** (F1 a F5 y F7; F6 quedó hecha). Ninguna toca Azure.
 
 ### F1. Reemplazar estimaciones por resultados reales
 
@@ -343,6 +360,22 @@ Estado: **5 pendientes**. Ninguna toca Azure.
 - **Criterio de aceptación:** resumen del estado más el contenido de este archivo, para que pueda retomar sin contexto.
 - **Confirmación humana:** no.
 
+### F6. Corregir la fila de `validar_corpus` en el plan
+
+- **Toca:** tabla de componentes del plan, fila `validar_corpus`.
+- **Qué estaba mal:** la fila decia que el Data asset `gold_v1` traía `eval.jsonl` y `dev.jsonl`, cuando el README tiene los SHA-256 de **tres** JSONL: `dev.jsonl`, `eval.jsonl` y `gold_standard_v1.jsonl`. Un lector que quisiera seguir esa fila subiría un asset incompleto y el job fallaría por un checksum que nunca se podía comparar.
+- **Criterio de aceptación:** la fila nombra los tres JSONL y aclara que el README trae los SHA-256 esperados.
+- **Estado:** **hecho** en el cierre de A9.
+- **Confirmación humana:** no.
+
+### F7. Cerrar H7, la referencia a Llama en `AGENTS.md`
+
+- **Toca:** `AGENTS.md`, sección de contexto del proyecto.
+- **Qué está mal:** describe el LLM como "Llama 3.1 8B Instruct vía Groq" cuando el código usa `openai/gpt-oss-20b`. `AGENTS.md` es el archivo que leen los agentes antes de tocar el repo, así que la línea equivocada propaga el error a cualquier trabajo futuro.
+- **Criterio de aceptación:** `AGENTS.md` nombra el modelo que el código realmente usa, o dice explícitamente que la elección de modelo está en `registro.py` y no en el documento.
+- **Por qué no se hizo ya:** no es un refactor, es cambiar una descripción de contrato que el equipo puede haber escrito a propósito. Es la pregunta 3 de la sección siguiente.
+- **Confirmación humana:** no para escribir el cambio. **Sí** para decidir el texto, porque es un acuerdo de equipo.
+
 ---
 
 ## 9. Preguntas que siguen abiertas
@@ -353,7 +386,7 @@ Se responden en la etapa que las necesita, no antes.
 | --- | --- | --- |
 | 1 | ¿Cuál es la fecha de entrega y sustentación? Con ella se fija un cronograma por fechas | Etapa F |
 | 2 | ¿Se hace el extra de Designer? | Etapa E, antes de arrancar E1 |
-| 3 | ¿Se cierra H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`? | Antes de cerrar la Etapa A |
+| 3 | ¿Se cierra H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`? | Ticket F7, antes de la sustentación |
 
 ## 10. Registro de sesiones
 
@@ -368,3 +401,4 @@ Se responden en la etapa que las necesita, no antes.
 | 7 | 2026-09-27 | A6 hecho: `INFERENCE_MODELO` con default `openai/gpt-oss-20b` en el servicio `inference` del Compose. El default sale de `MODELO_POR_DEFECTO` de `registro.py`, no de un literal repetido. Sin Docker local: el `docker compose` de esta máquina no tiene plugin, y la imagen de la VM es de Azure, no nuestra |
 | 8 | 2026-09-27 | A7 hecho: `requirements.txt` generado con `uv export -o` (316 líneas) en vez de la redirección `>` del plan, más `Dockerfile`, `environment.yml` y `.amlignore` en la raíz. **Ojo con `config/`**: `sirena_schema.ontologia` lo resuelve por ruta relativa al CWD, así que excluirlo del `.amlignore` rompe el job al importar. La imagen no se construyó: eso es Fase 3 |
 | 9 | 2026-09-27 | A8 hecho: los cuatro componentes y `pipeline.yml`, con 46 pruebas de coherencia entre cables, nombres y tipos. **El output de `comparar` es `uri_folder` y no `uri_file`**, porque `comparar.py` recibe `--salida` como carpeta y escribe `decision.json` adentro; se verificó en el código, no se asumió por el nombre. `autor` y `rama` se exponieron como inputs del pipeline, que sin eso dejaban toda corrida con `autor=sirena`. Salió **A9**: falta `azureml/src/registrar.py`, que el plan pide y A8 no cubría |
+| 10 | 2026-09-27 | **A9 hecho y con la Etapa A cerrada.** `registrar.py` registra `sirena-extractor` como `custom_model` con `MLClient`; nada de `mlflow.pyfunc.log_model`, que era el riesgo que el ticket anotaba y el plan L161 ya descartaba. Tres cosas se corrigieron contra la documentación oficial, no de memoria: **`identity` es clave del job y no del componente** (el esquema del command component no la tiene, y hay prueba que lo fija), **el `MLClient` no deduce el workspace dentro de un job** (los tres identificadores son inputs del pipeline, sin default porque el workspace no existe todavía), y **`decision.json` no basta para armar el paquete** (el informe del ganador vive en su carpeta de resultados, así que `registrar` recibe los dos `resultados`). `azure-ai-ml` quedó en el `Dockerfile` y no en `requirements.txt`, que se regenera con `uv export -o` y borraría la dependencia; el componente de registro perdió `key_vault_url` porque registrar no lee secretos. Salió **B10**: rol `AzureML Data Scientist` para la identidad del clúster, sin el cual el job falla con `Forbidden` al escribir. **Suite: 426 pasan, 1 xfail** |

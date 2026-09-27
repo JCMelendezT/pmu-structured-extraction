@@ -6,13 +6,27 @@ type: command
 
 description: >-
   Registra la configuracion ganadora en el registro de modelos del workspace
-  como sirena-extractor, con la ontologia y los hashes de prompts como
-  artefactos, y los tags que exige el plan.
+  como sirena-extractor, con la ontologia, la decision, los hashes de los
+  prompts y el informe del ganador como artefactos, y los tags que exige el
+  plan.
 
 inputs:
+  # decision.json por un lado y los dos resultados por el otro: la decision
+  # dice quien gano, pero el informe del ganador vive en la carpeta de
+  # resultados de ese modelo, y comparar.py no copia los informes.
   decision:
     type: uri_folder
-  key_vault_url:
+  resultados_a:
+    type: uri_folder
+  resultados_b:
+    type: uri_folder
+  # El MLClient no deduce el workspace dentro de un job: los defaults del CLI
+  # viven en la maquina que submits, no en el contenedor. Van explicitos.
+  subscription_id:
+    type: string
+  resource_group:
+    type: string
+  workspace:
     type: string
 
 outputs:
@@ -24,17 +38,20 @@ environment: azureml:sirena-eval@latest
 
 environment_variables:
   # Registrar en el registro de modelos es una escritura en Azure, asi que
-  # necesita identidad propia. El permiso va aparte, en el ticket de roles.
+  # DefaultAzureCredential tiene que usar la identidad administrada. El permiso
+  # va aparte, en el ticket de roles.
   AZURE_TOKEN_CREDENTIALS: ManagedIdentityCredential
-  KEY_VAULT_URL: ${{inputs.key_vault_url}}
 
-# OJO: este comando todavia no tiene script. El plan pide crear
-# azureml/src/registrar.py (ver la tabla de cambios al repositorio) y el
-# ticket A8 solo cubria los YAML. Mientras tanto este job falla al arrancar,
-# y la falla es visible en el grafo, que es preferible a un job en verde que
-# no registra nada. Ver el ticket A9 en PROGRESO.md.
+# La identidad administrada se declara en el pipeline, en el job registrar: el
+# esquema del command component no tiene clave identity. Registrar.py importa
+# inference.prompts para hashear los prompts, de ahi el PYTHONPATH.
 command: >-
   export PYTHONPATH=backend/inference:common/sirena-schema &&
   python azureml/src/registrar.py
   --decision ${{inputs.decision}}/decision.json
+  --resultados-a ${{inputs.resultados_a}}
+  --resultados-b ${{inputs.resultados_b}}
   --salida ${{outputs.modelo_registrado}}
+  --subscription-id ${{inputs.subscription_id}}
+  --resource-group ${{inputs.resource_group}}
+  --workspace ${{inputs.workspace}}

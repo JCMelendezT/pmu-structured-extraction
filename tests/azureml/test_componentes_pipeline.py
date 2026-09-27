@@ -47,7 +47,14 @@ RENOMBRES_POR_JOB = {
     "evaluar_20b": {"corpus"},
     "evaluar_120b": {"corpus"},
     "comparar": {"resultados_a", "resultados_b"},
-    "registrar": {"decision"},
+    "registrar": {
+        "decision",
+        "resultados_a",
+        "resultados_b",
+        "subscription_id",
+        "resource_group",
+        "workspace",
+    },
 }
 
 
@@ -190,6 +197,20 @@ class TestComponentes:
             "ManagedIdentityCredential"
         )
 
+    def test_el_componente_registrador_no_declara_identity(self) -> None:
+        """El esquema del command component no tiene clave identity.
+
+        Ponerla ahi pasa la revision del autor y falla al crear el job. La
+        identidad se declara en el job del pipeline.
+
+        """
+        # Arrange
+        ruta = DIRECTORIO_COMPONENTES / COMPONENTES["registrar"]
+        # Act
+        componente = _cargar(ruta)
+        # Assert
+        assert "identity" not in componente
+
 
 class TestPipeline:
     """El pipeline es coherente con los componentes que invoca."""
@@ -231,6 +252,21 @@ class TestPipeline:
         jobs = pipeline["jobs"]
         # Act / Assert
         assert jobs["evaluar_20b"]["component"] == jobs["evaluar_120b"]["component"]
+
+    def test_el_job_registrador_usa_la_identidad_gestionada(self, pipeline: dict[str, Any]) -> None:
+        """Registrar es escribir en Azure: AMLToken no alcanza.
+
+        Solo el job registrar la necesita. Ponerla en todos seria pedir un
+        permiso que los demas jobs no usan.
+
+        """
+        # Arrange
+        jobs = pipeline["jobs"]
+        # Act
+        identidades = {job: jobs[job].get("identity") for job in JOBS}
+        # Assert
+        assert identidades["registrar"] == {"type": "managed"}
+        assert [job for job, valor in identidades.items() if valor is not None] == ["registrar"]
 
     def test_las_dos_evaluaciones_no_comparten_el_corpus_por_casualidad(
         self, pipeline: dict[str, Any]
