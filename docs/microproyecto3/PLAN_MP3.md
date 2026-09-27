@@ -196,6 +196,8 @@ Para el entregable: armar el mismo escenario en la [calculadora de precios](http
 
 Controles de costo: **presupuesto con alertas al 50 % y 80 % del crédito, creado antes del workspace** (ticket B3b: el workspace crea Storage, Key Vault, Application Insights y el Container Registry, que facturan desde que existen), `min_instances: 0` y `idle_time_before_scale_down: 120` en el clúster, `az vm deallocate` al terminar cada sesión, y borrado del grupo de recursos después de la sustentación.
 
+> **Un presupuesto de Azure no es un tope: es una alarma.** El presupuesto de Cost Management **no detiene el gasto**. Si el consumo se dispara, Azure sigue facturando y el presupuesto solo avisa por correo o webhook. Sirve para enterarse a tiempo, no para frenar. **Los que sí cortan el gasto son los apagados:** `min-instances 0` en el clúster (baja solo a cero nodos tras `idle_time_before_scale_down`) y `az vm deallocate` al terminar cada sesión. El presupuesto es el detector de humo; el apagado es el corte de luz. Si el presupuesto se dispara y nadie apagó la VM ni el clúster, el gasto sigue corriendo hasta que sea fin de mes, y el presupuesto no lo va a impedir.
+
 ## 2. Propuesta de diseño (25 %)
 
 Dos zonas en la misma región y el mismo grupo de recursos: una VM que opera SIRENA en tiempo real y un workspace de Azure ML que decide, con evidencia, qué modelo usa esa VM.

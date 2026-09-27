@@ -259,6 +259,15 @@ La cuota de vCPU es **por suscripción y familia, no por región**: las cinco re
 - **Criterio de aceptación:** el grupo responde `Succeeded` en `westus`; los tres proveedores quedan en `Registered`, y `Microsoft.Insights` y `Microsoft.Storage` siguen en `Registered` sin haber sido tocados.
 - **Confirmación humana:** **sí**. Mostrar comando exacto, recurso tocado y costo (cero, pero crea recursos).
 
+**Resultado: hecho.** `rg-sirena-mp3` creado en `westus`, `provisioningState: Succeeded`. Los tres proveedores quedaron en `Registered` por su cuenta (el registro es asíncrono) y los otros dos nunca se tocaron.
+
+**Lo que costó cerrar B2 no fue el comando, fue la autenticación.** `az group create` falló tres veces con `AADSTS50076` / `invalid_grant` contra la política de acceso condicional `797f4846-ba00-4fd7-ba43-dac1f8f63013`, que exige MFA. Dos cosas costaron entenderlas y ninguna fue un bug del comando:
+
+1. **Un `az login` normal NO alcanza, y devuelve exit 0.** El token nuevo llega sin el claim `p1` que la política pide, así que las escrituras a ARM siguen rechazadas. Lo que funcionó fue el login con el `--claims-challenge` que Azure imprime en el propio error.
+2. **El mismo token puede leer y no escribir.** `az group exists` y `az group show` contestaban bien (404 real de ARM) mientras `az group create` moría con 50076. Que las lecturas funcionen no prueba que la escritura pase, y al revés. Verificar con lecturas da una falsa sensación de sesión válida.
+
+El error distingue además dos tenants: el `AADSTS50079` anterior señalaba el "Directorio predeterminado" (`9bb77fc3…`), que no es el de la universidad. El correcto es `693cbea0-4ef9-4254-8977-76e05cb5f556` ("Universidad Autónoma de Occidente", suscripción `Azure for Students`). Con `--tenant` explícito se descarta el equivocado.
+
 ### B3. Rol `Contributor` del compañero, acotado al grupo
 
 - **Objetivo:** que el compañero pueda lanzar el pipeline, ver Studio y encender o apagar la VM, sin acceso a nada fuera del microproyecto.
@@ -279,10 +288,13 @@ La cuota de vCPU es **por suscripción y familia, no por región**: las cinco re
 ### B3b. Crear el presupuesto con alertas al 50 % y 80 % — antes de B4
 
 - **Objetivo:** que exista una alarma antes de que empiece a facturar el workspace.
-- **Toca:** un presupuesto en Cost Management para la suscripción, con alertas al 50 % y al 80 %.
+- **Toca:** un presupuesto en Cost Management con **alcance el grupo de recursos `rg-sirena-mp3`**, no la suscripción, con umbral de **USD 30/mes** y alertas al **50 %** y al **80 %**.
+- **Por qué el alcance es el grupo y no la suscripción:** el microproyecto no es dueño de la suscripción `Azure for Students`, que es compartida y tiene otros gastos. Un presupuesto a nivel de suscripción mediría el gasto de todos y no avisaría cuando este proyecto se descontrola. A nivel de grupo, la señal es limpia: lo que se ve es exactamente lo que este microproyecto gastó.
+- **Por qué 30 y no 12:** la tabla nueva deja el demo entre 12 y 15 USD. Con 30, el 50 % (15) cae justo en el gasto esperado —avisa de que el sistema está funcionando normal— y el 80 % (24) avisa cuando algo se salió de control. Si el presupuesto fuera 15, el 50 % saltaría en la operación normal y el aviso perdería valor.
 - **Por qué antes de B4:** el grupo de recursos de B2 no cuesta nada, pero el workspace crea Storage, Key Vault, Application Insights y el Container Registry, que facturan desde que existen. Crear el presupuesto después es poner la alarma cuando ya se gastó.
-- **Criterio de aceptación:** el presupuesto existe con umbral mensual y las dos alertas configuradas; el correo o webhook de aviso está verificado.
+- **Criterio de aceptación:** el presupuesto existe con umbral de 30 USD/mes sobre el alcance del grupo, con las dos alertas configuradas; el correo o webhook de aviso está verificado.
 - **Confirmación humana:** **sí**. Crea un recurso de facturación, costo $0.
+- **Límite que hay que tener presente:** un presupuesto **no detiene el gasto**, solo avisa. El control real es `min-instances 0` en el clúster y `az vm deallocate` al terminar cada sesión. Está anotado en la sección de controles de costo de `PLAN_MP3.md`.
 
 ### B4. Crear el workspace y guardar el URI de MLflow
 
