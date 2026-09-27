@@ -122,7 +122,7 @@ Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/env/Dockerfile`, `azureml/env/requirements.txt`, `.amlignore` **en la raíz del repo** (ver H6).
 - **Criterio de aceptación:** `requirements.txt` se genera con `uv export --package inference --no-dev --no-hashes --no-emit-workspace`; la imagen instala sin errores; el `.amlignore` excluye `.git`, `data/`, `frontend/`, `*.db` y los `.env`.
 - **Confirmación humana:** no.
-- **Alcance corregido tras revertir A3.** Este ticket se había apoypado en "la referencia de Key Vault en el Environment `sirena-eval`", que es la premisa falsa que tumbó A3. **A7 no configura ningún secreto**: el Environment solo lleva `azure-identity` y `azure-keyvault-secrets` en la imagen (plan L318) para que el job pueda leer del Key Vault por código. La referencia de Key Vault como mecanismo nativo no existe para command jobs. El estado del secreto se verifica en el ticket B4 (Fase 4) y se confirma en la corrida corta de la Fase 6.
+- **Alcance corregido tras revertir A3.** Este ticket se apoyaba en "la referencia de Key Vault en el Environment `sirena-eval`", que es la premisa falsa que tumbó A3. **A7 no configura ningún secreto**: el Environment solo lleva `azure-identity` y `azure-keyvault-secrets` en la imagen (plan L318) para que el job pueda leer del Key Vault por código. La referencia de Key Vault como mecanismo nativo no existe para command jobs. El permiso se otorga en el ticket B7 (Fase 4) y la lectura efectiva se confirma en la corrida corta de la Fase 6.
 
 ### A8. YAML de componentes y del pipeline
 

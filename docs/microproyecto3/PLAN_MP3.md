@@ -505,7 +505,7 @@ Los cambios son aditivos: una carpeta `azureml/` nueva, dos ajustes pequeños en
 | `azureml/scripts/desplegar_config.sh` | Nuevo | Fase 8: fija el modelo registrado en la VM |
 | `.gitattributes` | Nuevo | Fuerza `eol=lf` en `eval-prompt/corpus/**/*.jsonl` para que el SHA-256 del corpus coincida con `README_gold_v1.md` en cualquier sistema operativo. Decisión del equipo ante el hallazgo H1 de `PROGRESO.md` |
 | `docker-compose.yml` | Ajuste | En `inference`, agregar `INFERENCE_MODELO=${INFERENCE_MODELO:-openai/gpt-oss-20b}`; opcional: sacar `mlflow` a un perfil (`profiles: [local]`) para que no arranque en la VM |
-| `backend/inference/inference/registro.py` | Ajuste solo si falla | Si dentro del job MLflow rechaza el experimento, no llamar `mlflow.set_experiment` cuando exista `MLFLOW_RUN_ID` (Azure ML ya fija el run y el experimento del job) |
+| `backend/inference/inference/registro.py` | Ajuste | Hecho en A4: dentro del job sí se rechaza el experimento, así que no se llama `mlflow.set_experiment` cuando existe `MLFLOW_RUN_ID` (Azure ML ya fija el run y el experimento del job). El arreglo resultó ser de una línea porque `mlflow.start_run()` ya retoma la corrida existente por su cuenta |
 | `tests/azureml/` | Nuevo | Pruebas de `comparar.py` (regla y desempate) y `validar_corpus.py` (checksum correcto e incorrecto), con patrón AAA |
 | `docs/AZURE.md` y `docs/trabajo_futuro.md` | Docs | Guía de despliegue y actualización del estado de MLflow |
 
