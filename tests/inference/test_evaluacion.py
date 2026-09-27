@@ -540,9 +540,7 @@ class TestGenerarInformeMatrices:
         # Arrange
         resultado = EvaluacionEjemplo(texto="temblor", latencia_ms=20.0)
         metricas = metricas_por_campo([_ejemplo_sismo()], [resultado])
-        matrices = {
-            "ubicacion_texto_literal": {"": {"": 16}, "calle 5": {"calle 5": 3}}
-        }
+        matrices = {"ubicacion_texto_literal": {"": {"": 16}, "calle 5": {"calle 5": 3}}}
         ruta = tmp_path / "informe.md"
 
         # Act

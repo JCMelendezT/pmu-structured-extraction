@@ -254,6 +254,4 @@ class TestRegistrarCorrida:
         # Assert
         directorio = Path(mlflow.artifacts.download_artifacts(run_id=run_id, tracking_uri=uri))
         assert _buscar_artefacto(directorio, "informe.md").exists()
-        assert not any(
-            ruta.name == "matrices_confusion.json" for ruta in directorio.rglob("*")
-        )
+        assert not any(ruta.name == "matrices_confusion.json" for ruta in directorio.rglob("*"))

@@ -389,9 +389,7 @@ def _seccion_matrices(
     """
     lineas = ["", "## Matrices de confusion", ""]
     for campo in CAMPOS_EVALUADOS:
-        lineas.extend(
-            _render_matriz_confusion(campo, matrices_confusion.get(campo, {}))
-        )
+        lineas.extend(_render_matriz_confusion(campo, matrices_confusion.get(campo, {})))
     return lineas
 
 
@@ -416,9 +414,7 @@ def _seccion_matrices_error(
         return lineas
     lineas.append(f"Las {len(destacadas)} matrices con mas errores de esta corrida:")
     for campo, errores, evaluados, confusiones in destacadas:
-        lineas.extend(
-            [f"### {campo} — {errores} errores de {evaluados} evaluados", ""]
-        )
+        lineas.extend([f"### {campo} — {errores} errores de {evaluados} evaluados", ""])
         for oro, predicho, cantidad in confusiones:
             lineas.append(f"- {_explicar_confusion(campo, oro, predicho, cantidad)}")
         lineas.append("")
@@ -442,9 +438,7 @@ def _matrices_con_mas_error(
     errores_por_campo: list[tuple[str, int, int, list[tuple[str, str, int]]]] = []
     for campo in CAMPOS_EVALUADOS:
         matriz = matrices_confusion.get(campo, {})
-        evaluados = sum(
-            cantidad for fila in matriz.values() for cantidad in fila.values()
-        )
+        evaluados = sum(cantidad for fila in matriz.values() for cantidad in fila.values())
         errores = sum(
             cantidad
             for oro, fila in matriz.items()
@@ -452,9 +446,7 @@ def _matrices_con_mas_error(
             if oro != predicho
         )
         if errores:
-            errores_por_campo.append(
-                (campo, errores, evaluados, _confusiones_top(matriz))
-            )
+            errores_por_campo.append((campo, errores, evaluados, _confusiones_top(matriz)))
     errores_por_campo.sort(key=lambda entrada: entrada[1], reverse=True)
     return errores_por_campo[:MAX_MATRICES_ERROR]
 
@@ -497,15 +489,10 @@ def _explicar_confusion(campo: str, oro: str, predicho: str, cantidad: int) -> s
     """
     if campo == "es_reporte_accionable":
         if oro == "true":
-            return (
-                f"{cantidad} ejemplos: reporte accionable clasificado "
-                "como no accionable"
-            )
+            return f"{cantidad} ejemplos: reporte accionable clasificado como no accionable"
         return f"{cantidad} ejemplos: no accionable clasificado como accionable"
     if campo in CAMPOS_UBICACION:
-        return (
-            f"{cantidad} ejemplos: recupera {predicho!r} en lugar de {oro!r}"
-        )
+        return f"{cantidad} ejemplos: recupera {predicho!r} en lugar de {oro!r}"
     return f"{cantidad} ejemplos: asigna {predicho!r} en lugar de {oro!r}"
 
 
@@ -545,18 +532,16 @@ def _render_matriz_confusion(
     filas = [oro for oro in visibles if oro in reducida]
     if "otros" in reducida:
         filas.append("otros")
-    columnas = [
-        valor
-        for valor in visibles
-        if any(valor in fila for fila in reducida.values())
-    ]
+    columnas = [valor for valor in visibles if any(valor in fila for fila in reducida.values())]
     hay_otros = any("otros" in fila for fila in reducida.values())
     if hay_otros:
         columnas.append("otros")
 
-    cabecera = "| Oro \\ Predicho | " + " | ".join(
-        _etiqueta_matriz(valor) for valor in columnas
-    ) + " | Total |"
+    cabecera = (
+        "| Oro \\ Predicho | "
+        + " | ".join(_etiqueta_matriz(valor) for valor in columnas)
+        + " | Total |"
+    )
     celdas_separador = [":---"] + ["---:"] * (len(columnas) + 1)
     separador = "|" + "|".join(celdas_separador) + "|"
     lineas = [f"### {campo}", "", cabecera, separador]
@@ -567,9 +552,7 @@ def _render_matriz_confusion(
         for indice, predicho in enumerate(columnas):
             cantidad = fila.get(predicho, 0)
             totales_columna[indice] += cantidad
-            celdas.append(
-                f"**{cantidad}**" if oro == predicho else str(cantidad)
-            )
+            celdas.append(f"**{cantidad}**" if oro == predicho else str(cantidad))
         celdas.append(str(sum(fila.values())))
         lineas.append("| " + " | ".join(celdas) + " |")
     celdas_total = ["**Total**"] + [str(t) for t in totales_columna]
@@ -813,10 +796,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     evaluador = EvaluadorPrompts(servicio)
     resultados = evaluador.evaluar(ejemplos)
     metricas = metricas_por_campo(ejemplos, resultados)
-    matrices = {
-        campo: matriz_confusion(ejemplos, resultados, campo)
-        for campo in CAMPOS_EVALUADOS
-    }
+    matrices = {campo: matriz_confusion(ejemplos, resultados, campo) for campo in CAMPOS_EVALUADOS}
     ruta = args.report if args.report is not None else _ruta_informe_por_defecto()
     generar_informe(metricas, resultados, ruta, matrices_confusion=matrices)
     from inference.registro import registrar_corrida

@@ -79,9 +79,7 @@ def registrar_corrida(
     """
     uri = tracking_uri if tracking_uri is not None else os.environ.get("MLFLOW_TRACKING_URI")
     if not uri:
-        _LOGGER.warning(
-            "MLFLOW_TRACKING_URI sin definir; la corrida no se registra en MLflow"
-        )
+        _LOGGER.warning("MLFLOW_TRACKING_URI sin definir; la corrida no se registra en MLflow")
         return None
     mlflow.set_tracking_uri(uri)
     mlflow.set_experiment(EXPERIMENTO)
