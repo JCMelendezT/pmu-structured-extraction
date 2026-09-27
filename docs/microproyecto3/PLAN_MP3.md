@@ -45,7 +45,7 @@ El repositorio ya trae casi todo lo que Azure ML necesita: un harness de evaluac
 | --- | --- | --- |
 | 5 microservicios FastAPI (BFF :8000, CRUD :8001, Process :8002, Inference :8003, Geo :8004) + Frontend Streamlit :8501 | Con Dockerfile cada uno y `docker-compose.yml` | Se despliegan tal cual en la VM con `docker compose up -d` |
 | Bot de Telegram (`telegram_source.py`) | Usa long polling (`GET /getUpdates`) | No necesita puerto de entrada ni IP adicional: solo salida a internet |
-| Inference | LLM `openai/gpt-oss-20b` vía Groq, 2 etapas (compuerta + extracción), proveedor desacoplado con el protocolo `ProveedorLLM` | El modelo se elige con `INFERENCE_MODELO`; agregar otro proveedor (por ejemplo Azure) no toca el resto del código |
+| Inference | LLM `openai/gpt-oss-20b` vía Groq, 2 etapas (compuerta + extracción), proveedor desacoplado con el protocolo `ProveedorLLM` | El modelo se elige con `INFERENCE_MODELO`. Agregar otro proveedor no toca el resto del código **del servicio Inference**; no aplica al harness de evaluación, que construye su propio `ServicioInferencia(ProveedorGroq())` en `azureml/src/evaluar.py` sin tocar `evaluacion.py` |
 | Harness `inference.evaluacion` | CLI con `--corpus`, `--report`, `--limite`; calcula exactitud, F1 por campo, latencia media y p95, matrices de confusión | Es el código del componente de evaluación del pipeline, sin reescribirlo |
 | `inference.registro` | Registra parámetros, métricas, artefactos y tags en MLflow si existe `MLFLOW_TRACKING_URI` | Azure ML es un servidor MLflow nativo: apuntar esa variable al workspace basta para que las corridas aparezcan en Studio |
 | Gold standard v1 | 400 mensajes congelados con checksum SHA-256: 60 dev y 340 eval | Se sube como Data asset versionado; el checksum se valida en el pipeline |
@@ -124,8 +124,8 @@ Se seleccionan tres cosas por separado: cómo se usa Azure ML, dónde corre el L
 
 | Opción | A favor | En contra | Decisión |
 | --- | --- | --- | --- |
-| L1. Groq (actual) | Ya integrado y probado; `gpt-oss-20b` cuesta del orden de USD 0,10 por millón de tokens de entrada y 0,50 de salida | Dependencia externa; datos (ya anonimizados) salen de Azure | **Seleccionada** |
-| L2. Modelo en Azure AI Foundry (por ejemplo gpt-oss) | Todo dentro de Azure; misma familia de modelo | Las suscripciones de estudiante suelen no tener cuota para desplegar modelos; habría que escribir un `ProveedorAzure` | Plan B documentado, no para el demo |
+| L1. Groq (actual) | Ya integrado y probado; `gpt-oss-20b` cuesta del orden de USD 0,10 por millón de tokens de entrada y 0,50 de salida | Dependencia externa; datos (ya anonimizados) salen de Azure | **Seleccionada. Confirmada por el profesor el 2026-09-26**: se acepta que el LLM se sirva desde Groq mientras la evaluación, la comparación, el registro y el despliegue viven en Azure ML |
+| L2. Modelo en Azure AI Foundry (por ejemplo gpt-oss) | Todo dentro de Azure; misma familia de modelo | Las suscripciones de estudiante suelen no tener cuota para desplegar modelos; habría que escribir un `ProveedorAzure` | **Descartada.** No se planifica ni se implementa. Quedó sin uso al confirmarse L1 el 2026-09-26 |
 | L3. Modelo pequeño servido en CPU en Azure ML | Sin dependencia externa | Contradice la constitución; un modelo que quepa en CPU no rinde en extracción estructurada; latencia alta | Descartada |
 
 ### Decisión H: dónde corren los microservicios
@@ -264,9 +264,12 @@ az vm list-usage --location eastus -o table
 # Proveedores que pueden no estar registrados en suscripciones de estudiante
 for p in Microsoft.MachineLearningServices Microsoft.ContainerRegistry Microsoft.KeyVault Microsoft.Insights Microsoft.Storage; do az provider register --namespace $p; done
 az group create --name rg-sirena-mp3 --location eastus
+# Permisos del compañero, acotados al grupo de recursos (cambia permisos, no crea
+# recursos: requiere confirmacion explicita). Solo dentro del directorio uao.edu.co.
+az role assignment create --assignee <correo-uao-del-companero> --role Contributor --scope $(az group show --name rg-sirena-mp3 --query id -o tsv)
 ```
 
-Verificación: el grupo responde `Succeeded` y hay al menos 4 vCPU libres entre las familias BS (VM) y DSv2 o DAv4 (clúster). Si no, cambiar de región permitida o de suscripción (ver Riesgos). Crear en el portal un presupuesto en Cost Management con alertas al 50 % y 80 %.
+Verificación: el grupo responde `Succeeded` y hay al menos 4 vCPU libres entre las familias BS (VM) y DSv2 o DAv4 (clúster). Si no, cambiar de región permitida o de suscripción (ver Riesgos). Crear en el portal un presupuesto en Cost Management con alertas al 50 % y 80 %. La asignación de rol se verifica con `az role assignment list --scope $(az group show --name rg-sirena-mp3 --query id -o tsv) --query "[].{principal:principalName, rol:roleDefinitionName}" -o table`, donde debe aparecer el correo del compañero con rol `Contributor` y ningún otro alcance.
 
 ### Fase 1 — Workspace de Azure ML
 
@@ -492,6 +495,7 @@ Los cambios son aditivos: una carpeta `azureml/` nueva, dos ajustes pequeños en
 | `azureml/components/registrar_config.yml` + `azureml/src/registrar.py` | Nuevo | Registra `sirena-extractor` con `mlflow.pyfunc.log_model` (artefactos: ontología, `decision.json`, hashes de prompts) y le pone tags `modelo`, `f1_tipo_evento`, `latencia_p95_ms`, `prompt_hash` |
 | `azureml/pipeline.yml`, `azureml/.amlignore` | Nuevo | Pipeline y exclusiones de subida |
 | `azureml/scripts/desplegar_config.sh` | Nuevo | Fase 8: fija el modelo registrado en la VM |
+| `.gitattributes` | Nuevo | Fuerza `eol=lf` en `eval-prompt/corpus/**/*.jsonl` para que el SHA-256 del corpus coincida con `README_gold_v1.md` en cualquier sistema operativo. Decisión del equipo ante el hallazgo H1 de `PROGRESO.md` |
 | `docker-compose.yml` | Ajuste | En `inference`, agregar `INFERENCE_MODELO=${INFERENCE_MODELO:-openai/gpt-oss-20b}`; opcional: sacar `mlflow` a un perfil (`profiles: [local]`) para que no arranque en la VM |
 | `backend/inference/inference/registro.py` | Ajuste solo si falla | Si dentro del job MLflow rechaza el experimento, no llamar `mlflow.set_experiment` cuando exista `MLFLOW_RUN_ID` (Azure ML ya fija el run y el experimento del job) |
 | `tests/azureml/` | Nuevo | Pruebas de `comparar.py` (regla y desempate) y `validar_corpus.py` (checksum correcto e incorrecto), con patrón AAA |
@@ -575,9 +579,9 @@ El riesgo más probable es de capacidad o cuota en Azure, no de código; por eso
 ## Preguntas abiertas
 
 - [ ] ¿Cuál es la fecha de entrega y sustentación? Con ella se fija un cronograma por fechas.
-- [ ] ¿En la suscripción de quién se monta todo, y qué regiones y cuota tiene? Sale de la Fase 0.
-- [ ] ¿El profesor acepta que el LLM se sirva desde Groq (fuera de Azure) si la evaluación, el registro y el despliegue viven en Azure? Conviene confirmarlo antes de la Fase 5.
-- [ ] ¿Los cambios de `azureml/` van al repositorio de SIRENA por PR o a un fork del equipo del microproyecto?
+- [x] ¿En qué suscripción se monta todo? **Resuelta el 2026-09-27:** una sola suscripción "Azure for Students", la del propietario del proyecto. El compañero entra con rol `Contributor` acotado a `rg-sirena-mp3`, sin invitaciones porque ambos están en el dominio `uao.edu.co`. La atribución de autoría va en los tags `autor` y `rama` de MLflow. Las regiones y la cuota concretos se confirman en la Fase 0.
+- [x] ¿El profesor acepta que el LLM se sirva desde Groq (fuera de Azure) si la evaluación, el registro y el despliegue viven en Azure? **Resuelta el 2026-09-26:** confirmado por el profesor. Se mantiene la decisión L1 y L2 queda descartada.
+- [x] ¿Los cambios de `azureml/` van al repositorio de SIRENA por PR o a un fork? **Resuelta el 2026-09-27:** fork propio del equipo, `JCMelendezT/pmu-structured-extraction`, con `upstream` apuntando a `Juanxo17/pmu-structured-extraction`. Rama de trabajo `feature/azureml-pipeline` basada en `develop`.
 - [ ] ¿Se hace el extra de Designer? Suma a la rúbrica de pipeline, pero cuesta tiempo convertir el corpus a tabla.
 
 ## Fuentes

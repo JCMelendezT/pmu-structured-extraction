@@ -16,6 +16,7 @@ La suscripción es Azure for Students: crédito limitado, 3 IP públicas, region
 
 - **Permitido sin preguntar:** comandos de solo lectura (`az ... list`, `az ... show`, `az vm list-usage`, `az ml compute list-usage`, `az policy assignment show`, consultas del MCP de Azure que solo leen).
 - **Requiere confirmación explícita del humano, una por comando o por bloque:** todo lo que crea, modifica, inicia, borra o cuesta dinero (`create`, `update`, `set`, `delete`, `start`, `deallocate`, `role assignment`, `keyvault secret set`, `az ml job create`). Antes de ejecutarlo, mostrar el comando exacto, qué recurso toca y el costo aproximado según el plan.
+- **Las asignaciones de rol son una categoría aparte:** `az role assignment create` no crea ni factura un recurso, pero **cambia los permisos** de una identidad sobre un alcance. Siempre requieren confirmación explícita, aunque el recurso de destino ya exista y aunque el alcance esté acotado a `rg-sirena-mp3`. Antes de ejecutarla hay que mostrar el `--assignee`, el `--role` y el `--scope` exactos, y verificar después con `az role assignment list --scope <id> --query "[].{principal:principalName, rol:roleDefinitionName}" -o table` que el alcance es el esperado y no un nivel superior.
 - Nunca borrar el grupo de recursos ni recursos existentes sin que el humano lo pida con esas palabras.
 - Nunca crear recursos fuera de las regiones permitidas por la política (Fase 0 del plan) ni fuera de `rg-sirena-mp3`.
 - Nunca subir `max-instances` del clúster por encima de 2 ni crear endpoints en línea (descartados en el plan).
@@ -31,7 +32,7 @@ La suscripción es Azure for Students: crédito limitado, 3 IP públicas, region
 
 - Se trabaja en `feature/azureml-pipeline`. Nunca push directo a `main` ni a `develop`; la integración va por PR con la plantilla del repo.
 - Gestor de paquetes: `uv`, como dice `AGENTS.md`. Única excepción: el `pip install` dentro de `azureml/env/Dockerfile`, que corre en la imagen de Azure ML y no en el workspace de uv.
-- Alcance: solo los archivos de la tabla "Cambios que hay que hacer en el repositorio" del plan. No se toca la lógica de BFF, CRUD, Process, Geo, Frontend ni del servicio Inference. El ajuste a `registro.py` solo se hace si la Fase 6 demuestra que hace falta.
+- Alcance: solo los archivos de la tabla "Cambios que hay que hacer en el repositorio" del plan. No se toca la lógica de BFF, CRUD, Process, Geo, Frontend ni del servicio Inference. Excepción acotada y ya decidida: el ajuste a `registro.py` para no llamar `mlflow.set_experiment` cuando exista `MLFLOW_RUN_ID` se hace en la etapa A con su prueba, porque la Fase 6 lo va a necesitar sí o sí (decisión D2 en `PROGRESO.md`).
 - Todo script nuevo en `azureml/src/` lleva docstrings estilo Google y pruebas en `tests/azureml/` con patrón AAA.
 - Antes de cada commit: `make lint`, `make format-check` y `make test` en verde. Un ticket no se marca como hecho con pruebas fallando.
 - Commits pequeños, uno por ticket, con mensaje que diga qué y por qué.
