@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Etapa A cerrada.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6, A7, A8 y A9 hechos; A3 revertido y absorbido en A5. **La Etapa A está completa y es código, no Azure**: lo único que falta es correrlo, y eso es la Etapa B. Sigue abierto H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`; no se corrigió en silencio porque es un cambio de contrato del equipo, no un refactor.
+Estado de este documento: **Etapa A cerrada, B1 hecho.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6, A7, A8 y A9 hechos; A3 revertido y absorbido en A5. **La Etapa A está completa y es código, no Azure**. B1 midió regiones, cuota y proveedores y fijó región, tamaño de clúster y tamaño de VM (D8, D9). Sigue abierto H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`; no se corrigió en silencio porque es un cambio de contrato del equipo, no un refactor. H14 y H15 nacieron de B1 y quedan documentados acá: casi borran el Plan B del clúster.
 
 ---
 
@@ -29,6 +29,25 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 | H10 | No estaba definido sobre qué suscripción se monta todo, lo que bloqueaba los permisos del compañero y el alcance de los comandos | Decisión del equipo | **Resuelto.** D6: una sola suscripción, con rol acotado para el compañero |
 | H11 | La rama base `develop` no pasaba `make format-check`: `ruff format` marcaría 4 archivos, dos de ellos justo los que este microproyecto va a tocar (`backend/inference/inference/evaluacion.py` y `backend/inference/inference/registro.py`), más `tests/inference/test_evaluacion.py` y `tests/inference/test_registro.py`. **El mismo problema está en `main` del repositorio original**: no es una regresión del fork | `make format-check` sobre `develop` | **Resuelto.** Commit `d10056b`, verificado que el AST de los 4 archivos es idéntico antes y después |
 | H12 | Las 11 pruebas que fallaban eran **del entorno local, no del repo**: las 11 son `spacy.load("es_core_news_md")` y el modelo en español faltaba en esta máquina. `Makefile:8` ya lo descarga en `make install`, o sea que en el equipo que hizo el repo sí estaba. Con el modelo instalado, las 11 pasan | `backend/process/process/anonimizacion.py:70`, 7 pruebas en `test_anonimizacion.py` y 4 en `test_orquestador.py` | **Resuelto.** `uv run --package process python -m spacy download es_core_news_md`. Sin cambios en el repo |
+| H14 | Al medir la cuota del Plan B del clúster se consultó la familia equivocada: `standardDAv4Family` en lugar de `standardDASv4Family`. Son dos familias distintas, y la segunda es la que factura `Standard_D2as_v4`. El 0 de la primera se leyó como "este SKU no tiene cuota" | `az vm list-usage -l westus` contrastado con el campo `family` de `Microsoft.Compute/skus` | **Resuelto antes de tocar el plan.** H14 en detalle abajo. `Standard_D2as_v4` se mantiene |
+| H15 | La tabla de cuota por SKU de `quota_usage_check` no lista todos los SKUs: omitió `Standard_DS2_v2`, que sí existe y sí tiene cuota. La ausencia en esa tabla no prueba falta de cuota | `quota_usage_check` en `chilecentral` vs `az vm list-skus` en la misma región | **Resuelto.** La cuota que gobierna el escalado es la de familia, no la tabla por SKU |
+
+### H14 en detalle: el casi-accidente que casi nos deja sin Plan B
+
+B1 iba a corregir el plan para borrar `Standard_D2as_v4` del Plan B del clúster (L360 y L583 de `PLAN_MP3.md`), con el argumento de "esa familia tiene cuota 0 en las cinco regiones". **El argumento era falso.** Se registra completo porque una línea borrada del plan no deja rastro, y este casi-accidente vale más que la corrección que casi hacemos.
+
+| | |
+| --- | --- |
+| **Qué se midió** | `standardDAv4Family` — límite 0, en uso 0, en las cinco regiones permitidas |
+| **Qué había que medir** | `standardDASv4Family` — límite 4, en uso 0 en `westus`. Con S |
+| **De dónde salió el nombre equivocado** | Del propio `PLAN_MP3.md`, que escribe "DAv4". No del catálogo de SKUs. El nombre se copió del documento que se pretendía verificar |
+| **Por qué no es un detalle tipográfico** | `Standard_D2as_v4` → `standardDASv4Family`. `Standard_Da_v4` (serie no-A) → `standardDAv4Family`. Una letra y son dos familias con cuotas distintas. `standardDAv4Family` no estaba vacía por casualidad: no le corresponde ningún SKU que nos sirva |
+| **Qué se habría perdido** | El **único Plan B real**. Las familias tienen cuota independiente, así que `Standard_D2as_v4` y `Standard_DS2_v2` no son dos tamaños del mismo pozo sino **dos pozos distintos**: usar uno deja la otra familia enteramente libre. Es lo que hace que el fallback funcione de verdad y no sea un "tamaño más chico" que falla por la misma razón |
+| **Cómo se detectó** | El equipo objetó una inconsistencia interna del informe: la tabla de cuota marcaba `standardBSFamily` como "la familia de la VM" y al mismo tiempo se decía que `Standard_B2s` no tenía cuota. Al forzarse a verificar la facturación real de cada SKU contra el campo `family` del catálogo, aparecieron las dos filas que faltaban |
+
+**El error fue del método, no del dato.** Una consulta que devuelve 0 es indistinguible de un 0 verdadero hasta que se sabe *qué* se consultó. Por eso la regla nueva de `REGLAS_AGENTE.md`: el nombre de la familia de un SKU se lee **siempre** del catálogo, nunca de un documento, un plan ni de la memoria.
+
+**Responsabilidad compartida.** El agente tomó el nombre del plan, midió la familia equivocada y presentó el 0 como verificado. El compañero **aprobó las tres correcciones sin preguntar la procedencia del nombre de la familia**, y la segunda —la que borraba el Plan B— estaba a punto de pasar. Ninguno de los dos consultó el catálogo. Una corrección de infraestructura que borra una opción de respaldo no se aprueba por confianza en el informe: se aprueba por procedencia.
 
 ## 2. Decisiones del equipo
 
@@ -41,6 +60,8 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 | D5 | Se mantiene L1 (Groq). L2 (Azure AI Foundry) queda **descartada**, sin plan de implementación | 2026-09-26 (profesor) | Actualizado en el plan |
 | D6 | Todo se monta en una sola suscripción "Azure for Students", la del propietario. El compañero entra con `Contributor` acotado a `rg-sirena-mp3`. La autoría va en los tags `autor` y `rama` de MLflow, no en la suscripción | 2026-09-27 | Tickets B2, B3 |
 | D7 | `evaluar.py` construye `ServicioInferencia(ProveedorGroq())` directamente, igual que el harness. **Sin** `SIRENA_PROVEEDOR` ni punto de extensión de proveedor, y **sin** `ProveedorAzure` | 2026-09-27 | Ticket A5 |
+| D8 | Región **`westus`**, clúster `Standard_DS2_v2` (min 0, max 2), VM `Standard_B2s_v2`. Descartada `francecentral`: también sirve, pero la latencia p95 que el proyecto **reporta como métrica** tiene que ser representativa del sistema y no de la geografía. Los jobs no llaman a un endpoint de Azure, llaman a la API de Groq, que es infraestructura de EE.UU.; correr el clúster del mismo lado que Groq es lo que hace la métrica comparable con la de producción. Si `westus` da `SkuNotAvailable`, el Plan B es `francecentral`, no otro SKU | 2026-09-27 | Tickets B2, B4, B7. `brazilsouth` **no** es Plan B: la política lo bloquea |
+| D9 | El workspace queda en EE.UU. **por la política de la suscripción de estudiante, no por diseño.** No hay región latinoamericana que cumpla las dos condiciones: `brazilsouth` tiene Azure ML disponible pero la política `sys.regionrestriction` la bloquea. La mitigación es que los mensajes se anonimizan en Process antes de salir hacia Groq o hacia Azure, así que lo que sale de Colombia no es el texto original. En la sustentación se dicen las dos cosas juntas: la limitación y la mitigación | 2026-09-27 | Ticket B4. Documentado en el plan para la presentación |
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
@@ -181,6 +202,37 @@ Estado: **10 pendientes**. Todos los comandos de creación pasan por la puerta d
 - **Toca:** ninguna mutación. `az policy assignment show`, `az vm list-usage`, `az provider show`.
 - **Criterio de aceptación:** informe con las regiones permitidas por la política, la cuota de vCPU por familia en cada una, y el estado de registro de los cinco proveedores; recomendación de región y de tamaños siguiendo la tabla de Riesgos del plan.
 - **Confirmación humana:** no (solo lectura). La **decisión** de región sí la toma el humano.
+
+**Resultado: hecho.** Decisiones en D8 y D9. Los datos:
+
+**Regiones.** La política `sys.regionrestriction` permite cinco: `francecentral`, `belgiumcentral`, `chilecentral`, `westus`, `mexicocentral`. Su parámetro real es `listOfAllowedLocations`, no `listOfAllowedRegions`; con el nombre equivocado la consulta devuelve `null`, que se lee como "sin restricción" si no se mira el JSON crudo.
+
+**Solo dos pueden hostear el workspace.** Cruzando con la disponibilidad de `Microsoft.MachineLearningServices/workspaces` para esta suscripción:
+
+| Región | Permitida | ML disponible |
+| --- | --- | --- |
+| `westus` | sí | **sí** |
+| `francecentral` | sí | **sí** |
+| `chilecentral` | sí | no |
+| `mexicocentral` | sí | no |
+| `belgiumcentral` | sí | no |
+
+`chilecentral` era la opción obvia por cercanía a Cali, y pasa el filtro de política para después fallar al crear el workspace. `brazilsouth` es la región latinoamericana con ML disponible, y la política la bloquea: **no existe Plan B en Latinoamérica**.
+
+**Cuota de vCPU en `westus`** (idéntica en las cinco regiones, todo en uso 0):
+
+| Familia | Límite | SKU que factura en ella | Nodos |
+| --- | --- | --- | --- |
+| `standardDSv2Family` | 4 | `Standard_DS2_v2` (2 vCPU) | 2 exactos |
+| `standardDASv4Family` | 4 | `Standard_D2as_v4` (2 vCPU) | 2 exactos |
+| `standardBsv2Family` | **10** | `Standard_B2s_v2` (2 vCPU) | 5 |
+| `standardBSFamily` | 4 | `Standard_B2s` (2 vCPU) | 2 |
+
+La cuota de vCPU es **por suscripción y familia, no por región**: las cinco reportan lo mismo. Cambiar de región no compra vCPU, solo cambia el tamaño o la suscripción. `max-instances 2` consume el 100% de `standardDSv2Family`, sin headroom; por eso el Plan B de la primera corrida es bajar a 1 y correr las dos evaluaciones en serie. Las familias B y D no compiten, así que la VM no le roba cuota al clúster.
+
+**Proveedores.** `MachineLearningServices`, `ContainerRegistry` y `KeyVault` están `NotRegistered`; `Insights` y `Storage` ya están `Registered`. B2 registra tres, no cinco. Relacionado: la consulta de cuota de ML falla con *"check your subscription permissions"* justamente porque el proveedor no está registrado, así que las cifras de ML no son confirmables hasta después de B2.
+
+**Pendiente de confirmar en B7:** que `Standard_DS2_v2` tenga capacidad (no solo cuota) en `westus`. La cuota de familia es 4 y el SKU existe en el catálogo, pero `az vm list-skus` se cuelga en esta máquina y no se pudo leer la restricción de capacidad. Si da `SkuNotAvailable`, el Plan B es `francecentral`.
 
 ### B2. Registrar proveedores y crear el grupo de recursos
 
@@ -402,3 +454,4 @@ Se responden en la etapa que las necesita, no antes.
 | 8 | 2026-09-27 | A7 hecho: `requirements.txt` generado con `uv export -o` (316 líneas) en vez de la redirección `>` del plan, más `Dockerfile`, `environment.yml` y `.amlignore` en la raíz. **Ojo con `config/`**: `sirena_schema.ontologia` lo resuelve por ruta relativa al CWD, así que excluirlo del `.amlignore` rompe el job al importar. La imagen no se construyó: eso es Fase 3 |
 | 9 | 2026-09-27 | A8 hecho: los cuatro componentes y `pipeline.yml`, con 46 pruebas de coherencia entre cables, nombres y tipos. **El output de `comparar` es `uri_folder` y no `uri_file`**, porque `comparar.py` recibe `--salida` como carpeta y escribe `decision.json` adentro; se verificó en el código, no se asumió por el nombre. `autor` y `rama` se exponieron como inputs del pipeline, que sin eso dejaban toda corrida con `autor=sirena`. Salió **A9**: falta `azureml/src/registrar.py`, que el plan pide y A8 no cubría |
 | 10 | 2026-09-27 | **A9 hecho y con la Etapa A cerrada.** `registrar.py` registra `sirena-extractor` como `custom_model` con `MLClient`; nada de `mlflow.pyfunc.log_model`, que era el riesgo que el ticket anotaba y el plan L161 ya descartaba. Tres cosas se corrigieron contra la documentación oficial, no de memoria: **`identity` es clave del job y no del componente** (el esquema del command component no la tiene, y hay prueba que lo fija), **el `MLClient` no deduce el workspace dentro de un job** (los tres identificadores son inputs del pipeline, sin default porque el workspace no existe todavía), y **`decision.json` no basta para armar el paquete** (el informe del ganador vive en su carpeta de resultados, así que `registrar` recibe los dos `resultados`). `azure-ai-ml` quedó en el `Dockerfile` y no en `requirements.txt`, que se regenera con `uv export -o` y borraría la dependencia; el componente de registro perdió `key_vault_url` porque registrar no lee secretos. Salió **B10**: rol `AzureML Data Scientist` para la identidad del clúster, sin el cual el job falla con `Forbidden` al escribir. **Suite: 426 pasan, 1 xfail** |
+| 11 | 2026-09-27 | **A9 commiteado y pusheado; B1 hecho.** El equipo descubrió una inconsistencia en el informe de cuota y, al verificar la facturación real de cada SKU, apareció que **el Plan B del clúster se iba a borrar por error** (H14, detalle completo arriba). Decisiones D8 y D9: región `westus` porque la latencia p95 que el proyecto reporta tiene que medir el sistema y no la geografía, y el workspace en EE.UU. por política de la suscripción, con la mitigación de la anonimización en Process. `PROGRESO.md` se registró **antes** de tocar el plan, no al revés. **Suite: 427 pasan, 1 xfail** (sube por la prueba que prohíbe `default` en los identificadores de Azure, porque el repositorio es público) |

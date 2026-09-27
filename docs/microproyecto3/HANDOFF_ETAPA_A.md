@@ -3,7 +3,7 @@
 **Fecha:** 2026-09-27
 **Rama:** `feature/azureml-pipeline` (16 commits sobre `origin/develop`, ya pusheada a `origin`)
 **Último commit:** `3802289 feat(mp3): registrar la configuracion ganadora como custom_model`
-**Suite:** 426 pasan, 1 xfail. Lint y formato limpios.
+**Suite:** 427 pasan, 1 xfail. Lint y formato limpios. Sube de 426 por la prueba que prohíbe `default` en `subscription_id`, `resource_group` y `workspace`, agregada porque el repositorio es público.
 **Estado:** Etapa A completa. Todo lo hecho es código y pruebas; **cero recursos de Azure creados**.
 
 > Este documento no reemplaza a `PROGRESO.md`, que es el estado real y detallado del proyecto

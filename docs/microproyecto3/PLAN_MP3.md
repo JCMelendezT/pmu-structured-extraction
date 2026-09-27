@@ -23,7 +23,7 @@ El plan reutiliza lo ya practicado: VM Ubuntu del módulo IaaS para los microser
 
 | Fuente | Qué aporta | Cómo se usa aquí |
 | --- | --- | --- |
-| Práctica IaaS (Azure VM) | Ubuntu Server 22.04 LTS, tamaño sugerido Standard\_DS1\_v2, regiones alternativas si no hay capacidad | La VM que aloja los 5 microservicios, el frontend y el bot de Telegram. Se sube a B2s porque 3,5 GB de RAM no alcanzan para 7 contenedores |
+| Práctica IaaS (Azure VM) | Ubuntu Server 22.04 LTS, tamaño sugerido Standard\_DS1\_v2, regiones alternativas si no hay capacidad | La VM que aloja los 5 microservicios, el frontend y el bot de Telegram. Se sube a B2s\_v2 porque 3,5 GB de RAM no alcanzan para 7 contenedores |
 | Práctica REST y REST + MySQL | API REST en Flask, pruebas con curl y Postman, pregunta de persistencia al apagar la máquina | SIRENA ya es REST (FastAPI). La pregunta de persistencia se responde con el volumen Docker de SQLite en el disco de la VM |
 | Diapositivas API REST | Recursos, métodos HTTP, códigos de respuesta, JSON | Justifica el contrato `docs/CONTRATOS_SISTEMA.md` en la presentación |
 | Guía de regiones | `az policy assignment show --name sys.regionrestriction` para ver regiones permitidas | Paso 0 del demo, antes de crear el grupo de recursos |
@@ -166,15 +166,15 @@ Por qué esto cuenta como pipeline de Azure ML aunque no haya entrenamiento: el 
 
 ## Cálculo aproximado de costos
 
-El demo cuesta del orden de USD 12 en dos semanas si la VM se apaga fuera de las pruebas; operando 24/7 sería del orden de USD 45 al mes más el consumo de Groq. Precios de lista en `eastus`, Linux, pago por uso; el único verificado contra la API de precios de Azure es la B2s, el resto son aproximados y hay que confirmarlos en la calculadora.
+El demo cuesta del orden de USD 12 en dos semanas si la VM se apaga fuera de las pruebas; operando 24/7 sería del orden de USD 45 al mes más el consumo de Groq. **El despliegue es en `westus` (decidido en B1), no en `eastus`.** Los precios de lista se consultaron en `eastus` y son aproximados: hay que confirmarlos en `westus` y en la calculadora. Con el cambio de SKU a `Standard_B2s_v2` el único precio que estaba verificado contra la API quedó obsoleto, así que **ninguno está verificado** hasta que se vuelva a consultar.
 
 | Recurso | Tamaño o SKU | Precio unitario (USD) | Demo: 2 semanas | Operación 24/7: mes |
 | --- | --- | --- | --- | --- |
-| VM de microservicios | Standard\_B2s (2 vCPU, 4 GB) | 0,0416 / hora ([precio de lista](https://prices.azure.com/api/retail/prices?$filter=armRegionName%20eq%20%27eastus%27%20and%20armSkuName%20eq%20%27Standard_B2s%27%20and%20priceType%20eq%20%27Consumption%27)) | 2,3 (56 h: 4 h/día) | 30,4 (730 h) |
+| VM de microservicios | Standard\_B2s\_v2 (2 vCPU, 4 GB) | ~0,045 / hora. **El precio verificado de `Standard_B2s` (0,0416) era de otro SKU y hay que re-verificarlo** ([API de precios](https://prices.azure.com/api/retail/prices?$filter=armRegionName%20eq%20%27westus%27%20and%20armSkuName%20eq%20%27Standard_B2s_v2%27%20and%20priceType%20eq%20%27Consumption%27)) | ~2,5 (56 h: 4 h/día) | ~33 (730 h) |
 | Disco del SO | Standard SSD 32 GB | ≈ 2,4 / mes (se cobra aunque la VM esté apagada) | 1,2 | 2,4 |
 | IP pública | Standard, estática | ≈ 0,005 / hora | 1,8 | 3,7 |
 | Workspace de Azure ML | — | Sin costo propio | 0 | 0 |
-| Clúster de cómputo | Standard\_DS2\_v2, mín. 0 nodos | ≈ 0,15 / hora solo mientras corre | 0,9 (≈ 6 h de jobs) | 0,6 (1 evaluación semanal) |
+| Clúster de cómputo | Standard\_DS2\_v2, mín. 0 nodos, máx. 2 | ≈ 0,15 / hora por nodo solo mientras corre | 0,9 (≈ 6 h de jobs) | 0,6 (1 evaluación semanal) |
 | Container Registry | Basic (se crea al construir el primer Environment) | ≈ 0,17 / día | 2,3 | 5,0 |
 | Storage + Key Vault + Application Insights | Creados con el workspace | Centavos por GB y por operación | < 1 | ≈ 1 |
 | Groq, evaluaciones | gpt-oss-20b ≈ 0,10 entrada / 0,50 salida por millón de tokens | ≈ 0,25 por corrida de 340 mensajes con 20b; algo más con 120b | ≈ 3 (≈ 6 corridas) | ≈ 2 |
@@ -259,23 +259,35 @@ az account show --query name -o tsv
 SUB=$(az account show --query id -o tsv)
 az policy assignment show --name sys.regionrestriction --scope /subscriptions/$SUB \
   --query "parameters.listOfAllowedLocations.value" -o tsv
-# Cuota de vCPU por familia en la region elegida
-az vm list-usage --location eastus -o table
+# Cuota de vCPU por familia en la region elegida (medido en B1: westus)
+# El nombre de la familia se lee del catalogo, nunca de un documento.
+# El nombre de la politica es listOfAllowedLocations, no listOfAllowedRegions.
+az vm list-usage --location westus --query "[?contains(name.value, 'standard')].{familia:name.value, limite:limit, enUso:currentValue}" -o tsv | Sort-Object
+# Que SKU factura en cada familia, para no medir la familia equivocada:
+az rest --method get --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Compute/skus?api-version=2021-07-01`$filter=location%20eq%20'westus'" \
+  --query "value[?starts_with(name, 'Standard_DS2_v2') || starts_with(name, 'Standard_D2as_v4') || starts_with(name, 'Standard_B2s')].{sku:name, familia:family}" -o tsv
 # Proveedores que pueden no estar registrados en suscripciones de estudiante
-for p in Microsoft.MachineLearningServices Microsoft.ContainerRegistry Microsoft.KeyVault Microsoft.Insights Microsoft.Storage; do az provider register --namespace $p; done
-az group create --name rg-sirena-mp3 --location eastus
+# (en B1 ya estaban Registered: Microsoft.Insights y Microsoft.Storage)
+for p in Microsoft.MachineLearningServices Microsoft.ContainerRegistry Microsoft.KeyVault; do az provider register --namespace $p; done
+az group create --name rg-sirena-mp3 --location westus
 # Permisos del compañero, acotados al grupo de recursos (cambia permisos, no crea
 # recursos: requiere confirmacion explicita). Solo dentro del directorio uao.edu.co.
 az role assignment create --assignee <correo-uao-del-companero> --role Contributor --scope $(az group show --name rg-sirena-mp3 --query id -o tsv)
 ```
 
-Verificación: el grupo responde `Succeeded` y hay al menos 4 vCPU libres entre las familias BS (VM) y DSv2 o DAv4 (clúster). Si no, cambiar de región permitida o de suscripción (ver Riesgos). Crear en el portal un presupuesto en Cost Management con alertas al 50 % y 80 %. La asignación de rol se verifica con `az role assignment list --scope $(az group show --name rg-sirena-mp3 --query id -o tsv) --query "[].{principal:principalName, rol:roleDefinitionName}" -o table`, donde debe aparecer el correo del compañero con rol `Contributor` y ningún otro alcance.
+Verificación: el grupo responde `Succeeded` y la cuota real de `westus` es la de B1: `standardDSv2Family` 4, `standardDASv4Family` 4 y `standardBsv2Family` 10, todas en uso 0. Con eso alcanza para 2 nodos `Standard_DS2_v2`, 2 nodos `Standard_D2as_v4` y 5 VMs `Standard_B2s_v2` a la vez, porque son familias distintas con cuota independiente: la VM no le quita vCPU al clúster.
+
+**`max-instances 2` consume el 100 % de `standardDSv2Family` y deja cero headroom.** Es el techo, no el estado estable, así que no cuesta nada tenerlo. Si la primera corrida da `OutOfQuota`, se baja a `max-instances 1` y las dos evaluaciones corren en serie.
+
+Crear en el portal un presupuesto en Cost Management con alertas al 50 % y 80 %. La asignación de rol se verifica con `az role assignment list --scope $(az group show --name rg-sirena-mp3 --query id -o tsv) --query "[].{principal:principalName, rol:roleDefinitionName}" -o table`, donde debe aparecer el correo del compañero con rol `Contributor` y ningún otro alcance.
+
+**Restricción de datos, para la sustentación.** El workspace queda en EE.UU. **por la política de la suscripción de estudiante, no por diseño**: de las cinco regiones permitidas, solo `westus` y `francecentral` tienen Azure ML disponible, y ninguna es latinoamericana. `brazilsouth` sí la tiene, pero la política la bloquea. La mitigación es que los mensajes se anonimizan en Process antes de salir hacia Groq o hacia Azure, así que lo que sale de Colombia no es el texto original. En la presentación se dicen las dos cosas juntas: la limitación y la mitigación.
 
 ### Fase 1 — Workspace de Azure ML
 
 ```bash
-az ml workspace create --name mlw-sirena --resource-group rg-sirena-mp3 --location eastus
-az configure --defaults group=rg-sirena-mp3 workspace=mlw-sirena location=eastus
+az ml workspace create --name mlw-sirena --resource-group rg-sirena-mp3 --location westus
+az configure --defaults group=rg-sirena-mp3 workspace=mlw-sirena location=westus
 az ml workspace show --query mlflow_tracking_uri -o tsv   # guardar este URI
 az ml compute list-usage -o table                         # cuota propia de Azure ML
 ```
@@ -450,7 +462,7 @@ Verificación: el grafo muestra los 5 pasos en verde; Jobs → `sirena-evaluacio
 ```bash
 MI_IP=$(curl -s https://ifconfig.me)   # desde el PC del equipo, no desde Cloud Shell
 az vm create --resource-group rg-sirena-mp3 --name vm-sirena --image Ubuntu2204 \
-  --size Standard_B2s --admin-username azureuser --generate-ssh-keys \
+  --size Standard_B2s_v2 --admin-username azureuser --generate-ssh-keys \
   --public-ip-sku Standard --assign-identity
 az network nsg rule update -g rg-sirena-mp3 --nsg-name vm-sirenaNSG -n default-allow-ssh \
   --source-address-prefixes $MI_IP/32
@@ -580,14 +592,15 @@ El riesgo más probable es de capacidad o cuota en Azure, no de código; por eso
 
 | Riesgo | Señal | Plan B |
 | --- | --- | --- |
-| Sin capacidad o sin cuota para la VM o el clúster en la región | `SkuNotAvailable`, `OutOfQuota`, `QuotaExceeded` | Otra región permitida (por ejemplo `brazilsouth` o `westus`); otro tamaño (`Standard_D2as_v4`, `Standard_DS1_v2`); clúster con `max-instances 1`; usar la suscripción del otro integrante |
-| Región bloqueada por política | `RequestDisallowedByPolicy` | Volver a la lista de regiones permitidas de la guía del curso |
+| Sin capacidad o sin cuota para el clúster en `westus` | `SkuNotAvailable`, `OutOfQuota`, `QuotaExceeded` | **`Standard_D2as_v4`, que no es un tamaño más chico sino OTRO POZO de cuota.** `Standard_DS2_v2` factura en `standardDSv2Family` y `Standard_D2as_v4` en `standardDASv4Family`: son familias con cuota independiente, cada una con 4 vCPU. Usar una deja la otra enteramente libre, así que el fallback funciona de verdad y no falla por la misma razón que el plan A. Y ambos son 2 vCPU, así que `max-instances 2` sigue valiendo. Confirmado en B1 |
+| Sin capacidad en ninguna de las dos regiones | `SkuNotAvailable` en `westus` y en `francecentral` | Cambiar a `francecentral` y recalcular la latencia p95, o usar la suscripción del otro integrante. **`brazilsouth` queda descartado: la política lo bloquea.** Es la única región latinoamericana con Azure ML disponible y no se puede usar |
+| VM sin RAM al construir 7 imágenes | Build lento o contenedores reiniciando | Construir en serie (`docker compose build --parallel 1`) o subir a **`Standard_B4s_v2` (4 vCPU, 16 GB)**. Es el Plan B correcto porque `standardBsv2Family` tiene 10 vCPU: entran 5 VMs de 2 vCPU, o sea que el salto a 4 vCPU cabe de sobra en la misma familia. El `Standard_B2ms` que figuraba antes no sirve: es de la familia `standardBmsFamily`, que es otra cuota distinta y no se midió |
+| Región bloqueada por política | `RequestDisallowedByPolicy` | Volver a la lista de regiones permitidas de la guía del curso. Ojo: de las cinco permitidas, solo `westus` y `francecentral` tienen Azure ML disponible, y `RequestDisallowedByPolicy` **no** es la señal de que falte ML en una región: esa da otro error. Verificado en B1 |
 | `azureml-mlflow` incompatible con mlflow 3.x | Error al construir el Environment o al registrar métricas | Fijar la versión de mlflow compatible solo en `azureml/env/requirements.txt`, sin tocar el lock del repo |
 | MLflow rechaza `set_experiment` dentro del job | Error de experimento o de run activo en `evaluar_modelo` | `experiment_name: sirena-evaluacion` en el pipeline (ya incluido) y, si persiste, el ajuste en `registro.py` |
 | La identidad del clúster no lee el Key Vault | `Forbidden` en la llamada de `evaluar.py` al `SecretClient` | Revisar si el Key Vault usa políticas de acceso o RBAC; en último caso, variable de entorno al lanzar el job y rotar la clave |
 | Límites de Groq (429) o caída del servicio | Corridas lentas o fallidas | El proveedor ya reintenta con backoff; bajar `limite`; correr las dos evaluaciones en serie; tener resultados de la noche anterior |
 | Sin acceso a gpt-oss-120b con la clave | `model_not_found` | Comparar contra `qwen/qwen3.8-27b` u otro modelo del catálogo de `docs/CONFIG_PROVEEDORES.md` |
-| VM sin RAM al construir 7 imágenes | Build lento o contenedores reiniciando | Construir en serie (`docker compose build --parallel 1`) o subir temporalmente a `Standard_B2ms` |
 | Red del salón cambia la IP pública del equipo | El tablero no abre en la sustentación | Actualizar la regla del NSG al llegar; video de respaldo |
 | Todo Azure falla | Nada se puede crear | El profesor acepta AWS EC2 para la parte IaaS; la parte de Azure ML se muestra con el video y las capturas de corridas previas |
 | Pregunta sobre validez de las métricas | — | Declarar desde el inicio que el corpus es sintético y que el aporte es el pipeline reproducible, no la cifra |
@@ -610,6 +623,6 @@ El riesgo más probable es de capacidad o cuota en Azure, no de código; por eso
 - [Configurar MLflow para Azure ML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-use-mlflow-configure-tracking?view=azureml-api-2)
 - [SKUs de endpoints en línea gestionados](https://learn.microsoft.com/en-us/azure/machine-learning/reference-managed-online-endpoints-vm-sku-list?view=azureml-api-2)
 - [Comandos az ml compute](https://learn.microsoft.com/en-us/cli/azure/ml/compute?view=azure-cli-latest)
-- [API de precios de Azure, Standard\_B2s en eastus](https://prices.azure.com/api/retail/prices?$filter=armRegionName%20eq%20%27eastus%27%20and%20armSkuName%20eq%20%27Standard_B2s%27%20and%20priceType%20eq%20%27Consumption%27)
+- [API de precios de Azure, Standard\_B2s\_v2 en westus](https://prices.azure.com/api/retail/prices?$filter=armRegionName%20eq%20%27westus%27%20and%20armSkuName%20eq%20%27Standard_B2s_v2%27%20and%20priceType%20eq%20%27Consumption%27) — el despliegue es en `westus`; la consulta necesita re-verificarse porque el precio anotado antes era de `Standard_B2s` en `eastus`, otro SKU y otra región
 - [Precio de gpt-oss-20b en Groq (Requesty)](https://www.requesty.ai/models/groq/openai-gpt-oss-20b)
 - [Calculadora de precios de Azure](https://azure.microsoft.com/es-es/pricing/calculator/)
