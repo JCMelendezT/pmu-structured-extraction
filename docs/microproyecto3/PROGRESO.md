@@ -350,6 +350,11 @@ Nota: B5 dice `dev.jsonl` y `eval.jsonl`, pero el README y el plan (L158) descri
 - **Cómo se comprueba el acceso al secreto, y cuándo.** En la **Fase 4 (este ticket)** solo se puede verificar que el permiso quedó **otorgado**: que `az keyvault set-policy --secret-permissions get` corrió, o que la asignación RBAC `Key Vault Secrets User` existe con el principal de la identidad del clúster. Eso **no prueba** que la lectura funcione. La prueba real es una lectura efectiva, y llega en la **corrida corta de la Fase 6**: el job de evaluación usa el secreto para llamar a Groq, así que si la identidad no puede leer, el job falla con `Forbidden` en la llamada al Key Vault. Si aparece, se revisa si el vault usa políticas de acceso o RBAC, y el plan B es pasar la clave por variable de entorno al lanzar el job y rotarla después de la sustentación.
 - **Confirmación humana:** **sí**.
 
+**Resultado: en progreso (nodos en provisionamiento).** Clúster `cpu-sirena` creado con `STANDARD_DS2_v2`, `system_assigned`, `principalId: a9efd341-1dc2-4aff-9dc5-11717d40ae17`. `provisioningState: null` — los nodos se están aprovisionando (~5-15 min). Roles de plano de datos asignados:
+- **Paso 3**: `Key Vault Secrets User` en `mlwsirenkeyvault18607254` → `a9efd341...` (ServicePrincipal) ✅
+- **Paso 4 (B10)**: `AzureML Data Scientist` en `mlw-sirena` → `a9efd341...` (ServicePrincipal) ✅
+- **Nota de RBAC**: el Key Vault usa `enableRbacAuthorization: true`. `az keyvault set-policy` **no funciona** con RBAC. Owner de suscripción **no incluye `dataActions`**. Los roles correctos se asignan con `az role assignment create --assignee-object-id <id> --assignee-principal-type ServicePrincipal`. Propagación: ~2 min.
+
 ### B8. Key Vault y el secreto de Groq
 
 - **Toca:** Key Vault en `rg-sirena-mp3`.
