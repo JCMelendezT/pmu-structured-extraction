@@ -326,6 +326,15 @@ El comando se ejecutó sin necesidad de un `az login` adicional: el token del ú
 - **Criterio de aceptación:** el asset existe con versión `1`; los archivos subidos conservan el SHA-256 verificado en A1.
 - **Confirmación humana:** **sí**.
 
+**Resultado: hecho.** Data asset `gold_v1` versión `1` creado en el `workspaceartifactstore` (type `uri_folder`). Subida de 0.31 MB desde `eval-prompt/corpus/gold_v1/`.
+
+Los 3 JSONL subidos conservan los SHA-256 verificados en A1:
+- `dev.jsonl` → `57b034dd1c7a4bf8b03eb5fef8f8c151d2d3ad4f020cf93bab44e1695099a32c` ✓
+- `eval.jsonl` → `20c53e5a6efbd5511d1bb151c654e47941bfaf8ed5b3a34095dabe4e67738912` ✓
+- `gold_standard_v1.jsonl` → `63dbf721a384bba92a3b160d3172c80b2e44286af1a2740829278cec0b85a992` ✓
+
+Nota: B5 dice `dev.jsonl` y `eval.jsonl`, pero el README y el plan (L158) describen el asset con los tres JSONL + `README_gold_v1.md` con sus checksums. Subí los 3 JSONL + README porque `validar_corpus` necesita los tres para validar. El comando fue `az ml data create --name gold_v1 --path eval-prompt/corpus/gold_v1 --type uri_folder --version 1 --datastore workspaceartifactstore --workspace-name mlw-sirena --resource-group rg-sirena-mp3`.
+
 ### B6. Registrar y construir el Environment
 
 - **Toca:** `azureml/env/Dockerfile` y `requirements.txt` de A7.
