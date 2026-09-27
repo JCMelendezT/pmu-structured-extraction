@@ -72,6 +72,12 @@ Descubiertos a pulso en esta máquina, con los que respondieron y los que no. La
   `serviceName` para discos y registry es `Storage` y `Container Registry`. Para IP pública es `Virtual Network`. Con `productName` el MCP **rechaza** el argumento: no existe.
 - **Un recurso que existe factura mientras existe, no mientras corre.** La IP pública estática y el disco se cobran aunque la VM esté apagada. Calcular el costo del demo con las horas de cómputo de la VM subestima esas dos líneas.
 
+- **Un Key Vault con RBAC (`enableRbacAuthorization: true`) necesita roles de plano de datos para operaciones de secretos.** Owner de la suscripción **no da acceso al plano de datos**: Owner no incluye `dataActions`, y escribir un secreto es una `dataAction`. El comando `az keyvault set-policy` no funciona con RBAC. Los roles correctos son:
+  - **`Key Vault Secrets User`** (lectura de secretos) para la identidad del clúster.
+  - **`Key Vault Secrets Officer`** (escritura de secretos) para el usuario que necesita `az keyvault secret set`.
+  Se asignan con `az role assignment create --assignee-object-id <id> --assignee-principal-type <tipo> --role "Key Vault ..." --scope <id del Key Vault>`.
+- **Las asignaciones de rol a identidades administradas van con `--assignee-object-id` + `--assignee-principal-type ServicePrincipal`.** Con `--assignee` a secas, la CLI intenta resolver el id contra Graph y puede fallar o colgarse sin motivo claro. Las asignaciones tardan unos minutos en propagarse: si da `Forbidden` justo después de asignar, espera y reintenta antes de cambiar nada.
+
 ## Entorno del humano
 
 - El equipo trabaja en Windows. Los bloques bash del plan se corren en Git Bash, WSL o Azure Cloud Shell; si el agente propone un comando para PowerShell, lo traduce (variables, continuación de línea con acento grave, comillas).
