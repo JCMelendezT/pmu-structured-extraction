@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4 y A5 hechos; A3 revertido y absorbido en A5; A6 a A8 pendientes.
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5 y A6 hechos; A3 revertido y absorbido en A5; A7 y A8 pendientes.
 
 ---
 
@@ -44,7 +44,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **5 hechos, 4 pendientes**. No toca Azure, no gasta crédito.
+Estado: **6 hechos, 3 pendientes**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -120,6 +120,9 @@ Estado: **5 hechos, 4 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `docker-compose.yml`.
 - **Criterio de aceptación:** el servicio `inference` recibe `INFERENCE_MODELO` con default `openai/gpt-oss-20b`; el resto de los servicios no cambia.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (una línea en `docker-compose.yml`, sin pruebas porque no hay lógica que probar: es un valor por defecto que Compose ya resuelve).
+- **El default se copió de `registro.py`:** se reutilizó `MODELO_POR_DEFECTO = "openai/gpt-oss-20b"` como fuente, para que el Compose y el registro no puedan quedar diciendo modelos distintos. Si algún día cambia el default, hay que cambiar el Compose en el mismo commit.
+- **No se validó con `docker compose config`:** el Docker de esta máquina no tiene el plugin compose (`docker compose` sale con código 125). El YAML se validó parseándolo con PyYAML, que es lo que importa acá. El `docker compose config` real se corra en la VM de Azure, en Fase 8.
 
 ### A7. Environment de Azure ML y `.amlignore`
 
@@ -338,3 +341,4 @@ Se responden en la etapa que las necesita, no antes.
 | 4 | 2026-09-27 | **A3 revertido** por decisión del equipo, con evidencia de la doc oficial: las referencias `${{keyvault:...}}` no existen para command ni pipeline jobs, solo para online endpoints; y el Dockerfile del Environment ya instalaba los dos Azure SDK (plan L318), así que el argumento de "evitar dependencias" era falso. Hallazgo nuevo **H13**. La lectura del secreto pasa a `evaluar.py` con `SecretClient` + `DefaultAzureCredential`, sin imprimir y sin sustitución de shell. A7 y B7 reescritos: A7 no configura secretos, y la lectura efectiva se prueba en la corrida corta de la Fase 6 |
 | 5 | 2026-09-27 | A4 hecho: `registro.py` ya no cambia de experimento cuando existe `MLFLOW_RUN_ID`. El arreglo fue **una línea**: `mlflow.start_run()` ya retoma la corrida del padre por su cuenta, así que lo único roto era el `set_experiment` incondicional. **Suite: 352 pasan, 1 xfail** |
 | 6 | 2026-09-27 | A5 hecho: `evaluar.py` y `comparar.py`. La clave se resuelve adentro del proceso y no se imprime; el desempate por costo quedó anclado a `gpt-oss-20b` con umbral estricto de 0,02. **Suite: 371 pasan, 1 xfail**. Se apartó del plan a propósito: `metricas.json` lleva `"modelo"` porque el job que compara no recibe el modelo por input |
+| 7 | 2026-09-27 | A6 hecho: `INFERENCE_MODELO` con default `openai/gpt-oss-20b` en el servicio `inference` del Compose. El default sale de `MODELO_POR_DEFECTO` de `registro.py`, no de un literal repetido. Sin Docker local: el `docker compose` de esta máquina no tiene plugin, y la imagen de la VM es de Azure, no nuestra |
