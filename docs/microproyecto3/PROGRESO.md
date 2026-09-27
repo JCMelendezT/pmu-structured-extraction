@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2 y A4 hechos; A3 revertido y absorbido en A5; A5 a A8 pendientes.
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4 y A5 hechos; A3 revertido y absorbido en A5; A6 a A8 pendientes.
 
 ---
 
@@ -44,7 +44,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
+Estado: **5 hechos, 4 pendientes**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -108,6 +108,11 @@ Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/src/evaluar.py`, `azureml/src/comparar.py`, `tests/azureml/test_evaluar.py`, `tests/azureml/test_comparar.py`.
 - **Criterio de aceptación:** `evaluar.py` construye su propio `ServicioInferencia(ProveedorGroq())` y reutiliza `cargar_corpus`, `EvaluadorPrompts`, `metricas_por_campo`, `generar_informe` y `registrar_corrida`; `evaluacion.py` no se modifica; escribe `metricas.json` serializado con `dataclasses.asdict`; acepta `autor` y `rama` como inputs y los pasa a `registrar_corrida`; `comparar.py` elige la versión ganadora con el criterio del plan.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (19 pruebas: 9 de `evaluar.py`, 10 de `comparar.py`).
+- **Desviación deliberada del plan, y por qué:** el plan (L501) decía que `metricas.json` es `dataclasses.asdict(metricas)`, tal cual. Se le agregó la clave `"modelo"`. La regla de desempate de `comparar.py` depende de *saber cuál de los dos era el modelo barato*, y el job `comparar` del plan (L417-421) solo recibe las dos carpetas de resultados: no tiene forma de saberlo. Las dos salidas eran o meter el modelo en el artefacto, o agregar dos inputs `modelo_a`/`modelo_b` al componente. Se eligió el artefacto porque un `metricas.json` que no dice qué midió es una trampa para quien lo lea después, y MLflow ya registra el modelo como parámetro, así que no es información nueva. **Consecuencia: A8 no necesita cambiar el bloque `comparar` del plan.**
+- **Hallazgo al implementarlo:** `Metricas` **no tiene** campos `f1_tipo_evento` ni `f1_es_reporte_accionable` planos; las métricas viven anidadas en `campos: list[MetricaCampo]`, una entrada por campo con `campo`/`evaluados`/`exactitud`/`f1`. `comparar.py` tiene que buscar por nombre de campo, no leer una clave plana. La regla del plan está escrita como si fueran claves planas y no lo son.
+- **El desempate está anclado a `openai/gpt-oss-20b`, no a "el más barato de los dos".** Es a propósito: es el modelo que la comparación de costos del plan puso como barato, y escribirlo fijo evita que la regla cambie de significado si cambian los candidatos. Si hay empate y ninguno de los dos es ese modelo, `comparar.py` falla con un error claro en vez de elegir uno al azar.
+- **El umbral es estricto:** a una diferencia de exactamente 0,02 ya no es empate y gana el mayor. Cubierto por una prueba que fija ese borde.
 
 ### A6. `INFERENCE_MODELO` en el servicio de inferencia
 
@@ -332,3 +337,4 @@ Se responden en la etapa que las necesita, no antes.
 | 3 | 2026-09-27 | A2 hecho: `validar_corpus` con los tres checksums del README y salida `gold_v1/eval.jsonl` + `manifest.json`. Los conteos reales son 60/340/400, y el total del corpus es 400, no la suma de los tres archivos. **Suite: 346 pasan, 1 xfail** |
 | 4 | 2026-09-27 | **A3 revertido** por decisión del equipo, con evidencia de la doc oficial: las referencias `${{keyvault:...}}` no existen para command ni pipeline jobs, solo para online endpoints; y el Dockerfile del Environment ya instalaba los dos Azure SDK (plan L318), así que el argumento de "evitar dependencias" era falso. Hallazgo nuevo **H13**. La lectura del secreto pasa a `evaluar.py` con `SecretClient` + `DefaultAzureCredential`, sin imprimir y sin sustitución de shell. A7 y B7 reescritos: A7 no configura secretos, y la lectura efectiva se prueba en la corrida corta de la Fase 6 |
 | 5 | 2026-09-27 | A4 hecho: `registro.py` ya no cambia de experimento cuando existe `MLFLOW_RUN_ID`. El arreglo fue **una línea**: `mlflow.start_run()` ya retoma la corrida del padre por su cuenta, así que lo único roto era el `set_experiment` incondicional. **Suite: 352 pasan, 1 xfail** |
+| 6 | 2026-09-27 | A5 hecho: `evaluar.py` y `comparar.py`. La clave se resuelve adentro del proceso y no se imprime; el desempate por costo quedó anclado a `gpt-oss-20b` con umbral estricto de 0,02. **Suite: 371 pasan, 1 xfail**. Se apartó del plan a propósito: `metricas.json` lleva `"modelo"` porque el job que compara no recibe el modelo por input |
