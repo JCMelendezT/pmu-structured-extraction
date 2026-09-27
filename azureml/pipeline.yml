@@ -14,27 +14,17 @@ inputs:
   # El corpus entra como Data asset versionado, no como codigo: por eso
   # eval-prompt/corpus esta excluido del .amlignore.
   gold:
-    type: uri_folder
-    default: azureml:gold_v1@latest
-  limite:
-    type: integer
-    default: 340
-  autor:
-    type: string
-    default: sirena
-  rama:
-    type: string
-    default: ""
-  key_vault_url:
-    type: string
+    path: azureml:gold_v1@latest
+    mode: download
+  limite: 340
+  autor: sirena
+  rama: ""
+  key_vault_url: https://mlwsirenkeyvault18607254.vault.azure.net
   # El workspace todavia no existe cuando se escribe el pipeline, asi que estos
   # tres no llevan default: se pasan al crear el job.
-  subscription_id:
-    type: string
-  resource_group:
-    type: string
-  workspace:
-    type: string
+  subscription_id: 1ba330a0-5897-4ef6-8fd1-d304b0e766d1
+  resource_group: rg-sirena-mp3
+  workspace: mlw-sirena
 
 jobs:
   validar:
