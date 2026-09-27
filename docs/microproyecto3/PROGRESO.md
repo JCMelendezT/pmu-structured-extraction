@@ -66,6 +66,8 @@ B1 iba a corregir el plan para borrar `Standard_D2as_v4` del Plan B del clúster
 
 **Responsabilidad compartida.** El agente tomó el nombre del plan, midió la familia equivocada y presentó el 0 como verificado. El compañero **aprobó las tres correcciones sin preguntar la procedencia del nombre de la familia**, y la segunda —la que borraba el Plan B— estaba a punto de pasar. Ninguno de los dos consultó el catálogo. Una corrección de infraestructura que borra una opción de respaldo no se aprueba por confianza en el informe: se aprueba por procedencia.
 
+| H17 | **H16 estaba mal.** El disco de 32 GB se cotizó correctamente a 2,4/mes en el plan original. H16 corrigió a `E1 LRS` a 0,30/mes, pero `E1` es de 4 GiB, `E4` es de 32 GiB y 256 GiB es `E15`. El precio original era el correcto. Verificado en `prices.azure.com` (`skuName eq 'E4 LRS'`, westus: 2,40) y en la documentación de tipos de disco de Azure. **Yo aprobé la corrección de H16 sin verificarla.** | `prices.azure.com` con `armRegionName eq 'westus'`, `skuName eq 'E4 LRS'`; documentación de tipos de disco administrado | **Resuelto.** Se revierte la corrección de H16. El disco de 32 GB es `E4 LRS` a 2,40/mes. La tabla de costos vuelve a los valores originales |
+
 ## 2. Decisiones del equipo
 
 | # | Decisión | Fecha | Consecuencia |
@@ -81,6 +83,14 @@ B1 iba a corregir el plan para borrar `Standard_D2as_v4` del Plan B del clúster
 | D9 | El workspace queda en EE.UU. **por la política de la suscripción de estudiante, no por diseño.** No hay región latinoamericana que cumpla las dos condiciones: `brazilsouth` tiene Azure ML disponible pero la política `sys.regionrestriction` la bloquea. La mitigación es que los mensajes se anonimizan en Process antes de salir hacia Groq o hacia Azure, así que lo que sale de Colombia no es el texto original. En la sustentación se dicen las dos cosas juntas: la limitación y la mitigación | 2026-09-27 | Ticket B4. Documentado en el plan para la presentación |
 | D10 | La VM es **`Standard_B2s` (2 vCPU, 4 GB)**, no `Standard_B2s_v2`, después de consultar el precio real en `westus`: 0,0496/hora contra 0,0992/hora de `Standard_B2s_v2`, **exactamente el doble**. El argumento que llevó a `B2s_v2` era el headroom de cuota, y es inválido: se necesita **una** VM de 2 vCPU, y los 4 vCPU de `standardBSFamily` sobran. Los 10 vCPU de `standardBsv2Family` no compran nada que el proyecto vaya a usar. El riesgo de RAM al construir las 7 imágenes se resuelve con una escalera de tres peldaños y no pagando el doble desde el día uno | 2026-09-27 | Ticket B1b. Escalera de escalation en la tabla de Riesgos del plan |
 | D11 | **El presupuesto con alertas al 50 % y 80 % se crea antes de B4, no después.** El grupo de recursos de B2 no cuesta nada, pero el workspace de B4 crea Storage, Key Vault, Application Insights y el Container Registry, que **sí facturan desde el minuto uno**. Crear el presupuesto después es crear la alarma después de que empiece el gasto | 2026-09-27 | Tickets B2, B3b. Orden explícito en el plan |
+| I-D1 | Una sola VM `Standard_B2s` con Docker Compose, como en el plan original | Cuota y crédito de estudiante; el `docker-compose.yml` ya existe; 1 IP pública de 3 | 2026-09-27 | Tickets I1-I6 |
+| I-D2 | Terraform gestiona **solo lo nuevo**: red, NSG, IP pública, VM, auto-apagado y los roles de la VM. Lo creado con CLI se referencia con bloques `data` | Importar el workspace, el Key Vault o el clúster a Terraform arriesga que un `apply` los reemplace o los destruya, y se perderían corridas y permisos. Referenciarlos da el mismo resultado sin ese riesgo | 2026-09-27 | Tickets I1-I6 |
+| I-D3 | El estado de Terraform es local, en la máquina de Juan, y **no se versiona** | Solo Juan aplica cambios. El `.tfstate` puede contener datos sensibles. Lo que se comparte con el equipo es el código `.tf`, el `.terraform.lock.hcl` y un `terraform.tfvars.example` | 2026-09-27 | Tickets I1-I6 |
+| I-D4 | Ningún secreto entra en Terraform. La VM lee `groq-api-key` y `telegram-bot-token` del Key Vault con su identidad administrada, mediante `infra/scripts/cargar_secretos.sh` | Un secreto en `.tf`, `tfvars`, `cloud-init` o en un output queda escrito en el estado y en los metadatos de la VM. El Key Vault ya existe y es la fuente única de la clave de Groq | 2026-09-27 | Tickets I1-I6 |
+| I-D5 | El NSG abre solo 22 (IP de Juan) y 8000 y 8501 (IP de Juan y del equipo), con listas en `terraform.tfvars` | BFF y Frontend no tienen autenticación. CRUD, Process, Inference y Geo (8001–8004) nunca se exponen: CRUD acepta `PATCH` sin credenciales. Autorizar una IP nueva es editar `tfvars` y aplicar | 2026-09-27 | Tickets I1-I6 |
+| I-D6 | El tamaño de la VM es una variable. Para las ventanas de prueba de carga se sube a `Standard_D2as_v4` y después se baja | La serie B es de ráfaga: con carga sostenida agota créditos de CPU y baja a su línea base, lo que ensucia la medición. `standardDASv4Family` tiene 4 vCPU libres, familia distinta de la del clúster (`DSv2`) | 2026-09-27 | Tickets I1-I6 |
+| I-D7 | Auto-apagado diario a las 23:00 hora de Bogotá con `azurerm_dev_test_global_vm_shutdown_schedule` | Una VM olvidada encendida es el gasto más probable. El presupuesto solo avisa; el auto-apagado corta | 2026-09-27 | Tickets I1-I6 |
+| I-D8 | La VM clona el repo definido por variables (`repo_url`, `repo_branch`). Por defecto el fork con `feature/azureml-pipeline`, que ya tiene `INFERENCE_MODELO` en el Compose | `repo_url` y `repo_branch` solo cuentan al **crear** la VM: cambiar `custom_data` obliga a recrearla y se perdería la base SQLite. Por eso la VM lleva `lifecycle { ignore_changes = [custom_data] }`, y cambiar de rama después se hace con `git checkout` dentro de la VM | 2026-09-27 | Tickets I1-I6 |
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
@@ -412,34 +422,34 @@ Estado: **5 pendientes**.
 
 ## 6. Etapa D — VM y cierre del ciclo (fases 7 y 8)
 
-Estado: **5 pendientes**.
+Estado: **Reemplazada por PLAN_INFRA.md (VM con Terraform, tickets I1 a I6).** Los tickets D1-D5 quedan marcados como reemplazados por I1-I6.
 
-### D1. Crear la VM, el NSG y la identidad
+### D1. Crear la VM, el NSG y la identidad — **REEMPLAZADO por I1-I3**
 
 - **Toca:** VM B2s, puertos 22 y 8501 restringidos a la IP del equipo, identidad administrada.
 - **Criterio de aceptación:** la VM existe; el NSG no expone otros puertos; la identidad está asignada.
 - **Confirmación humana:** **sí**, comando por comando.
 
-### D2. Instalar dentro de la VM
+### D2. Instalar dentro de la VM — **REEMPLAZADO por I4**
 
 - **Objetivo:** clonar **el fork y la rama del microproyecto**, no el upstream (ver H8).
 - **Toca:** `az vm run-command invoke --command-id RunShellScript`, en bloques pequeños. Docker, Azure CLI, `git clone` de `JCMelendezT/pmu-structured-extraction` en `feature/azureml-pipeline`, `docker compose`.
 - **Criterio de aceptación:** los cinco servicios y el tablero levantan; el repo en la VM es el fork en la rama correcta.
 - **Confirmación humana:** **sí**, porque cambia la VM. **Ningún secreto en esos scripts.**
 
-### D3. Variables de entorno y health checks
+### D3. Variables de entorno y health checks — **REEMPLAZADO por I4**
 
 - **Toca:** el `.env` de la VM, que completa el humano por SSH.
 - **Criterio de aceptación:** `/health` responde en los cinco servicios; el tablero responde en el puerto 8501.
 - **Confirmación humana:** **sí** para `docker compose up -d`; los secretos los pone el humano.
 
-### D4. Fijar el modelo registrado en la VM
+### D4. Fijar el modelo registrado en la VM — **REEMPLAZADO por I5**
 
 - **Toca:** `azureml/scripts/desplegar_config.sh`.
 - **Criterio de aceptación:** el script deja en `INFERENCE_MODELO` el modelo ganador según el Model Registry, y se muestra el valor final.
 - **Confirmación humana:** no si solo lee del registry; **sí** si el script reinicia contenedores.
 
-### D5. Demo de extremo a extremo
+### D5. Demo de extremo a extremo — **REEMPLAZADO por I6**
 
 - **Toca:** un mensaje real por el canal que se use en la sustentación.
 - **Criterio de aceptación:** la salida estructurada es correcta y la corrida queda registrada en MLflow; evidencia con captura.
@@ -521,6 +531,75 @@ Qué se cambió, y son dos líneas:
 
 **Lo que NO se tocó, a propósito:** `docs/propuesta/propuesta-final-sirena.md` y `docs/trabajo_futuro.md` también hablan de Llama 3.1. Son los entregables de los microproyectos 1 y 2, evaluados y ya entregados: reescribirlos cambia un documento histórico. `trabajo_futuro.md:78` ya registra la contradicción y la deja abierta a propósito. Si el equipo quiere cerrarla, es un ticket aparte y con su visto bueno.
 - **Confirmación humana:** no para escribir el cambio. **Sí** para decidir el texto, porque es un acuerdo de equipo.
+
+---
+
+## 11. Etapa de Infraestructura — VM con Terraform (PLAN_INFRA.md)
+
+Estado: **9 pendientes** (I0 a I8). Fuente de verdad: `PLAN_INFRA.md`.
+
+### I0. Cerrar B7 (pipeline de Azure ML)
+
+- **Objetivo:** clave real de Groq en el Key Vault, corrida corta `limite=5` en verde, `sirena-extractor:1` registrado.
+- **Toca:** `az keyvault secret set` (lo ejecuta el humano), `az ml job create`.
+- **Criterio de aceptación:** los 5 pasos en verde, `metricas.json` de los dos modelos, `decision.json`, y `sirena-extractor` versión 1 con sus tags en el registro.
+- **Confirmación humana:** **sí** para `az ml job create`.
+
+### I1. Código Terraform (sin tocar Azure)
+
+- **Objetivo:** escribir `infra/terraform/` y `infra/scripts/` según PLAN_INFRA.md sección 5.
+- **Toca:** `versions.tf`, `providers.tf`, `variables.tf`, `data.tf`, `network.tf`, `vm.tf`, `roles.tf`, `outputs.tf`, `cloud-init.yaml.tftpl`, `terraform.tfvars.example`, `.gitignore`, scripts.
+- **Criterio de aceptación:** `terraform init`, `terraform fmt -check -recursive` y `terraform validate` en verde; `.gitignore` probado con `git status`.
+- **Confirmación humana:** no.
+
+### I2. Secreto de Telegram en el Key Vault
+
+- **Objetivo:** `telegram-bot-token` en el Key Vault.
+- **Toca:** `az keyvault secret set`.
+- **Criterio de aceptación:** `az keyvault secret show ... --name telegram-bot-token --query "attributes.enabled"` devuelve `true`.
+- **Confirmación humana:** **sí**, y además la ejecuta el humano.
+
+### I3. Plan y aplicación
+
+- **Objetivo:** `terraform plan` con 0 cambios y 0 destrucciones sobre lo existente, luego `terraform apply`.
+- **Toca:** `terraform plan -out tfplan`, `terraform apply tfplan`.
+- **Criterio de aceptación:** VM creada, roles asignados, SSH funciona, `cloud-init status --wait` devuelve `done`.
+- **Confirmación humana:** **sí** para `terraform apply`.
+
+### I4. Desplegar los contenedores en la VM
+
+- **Objetivo:** 7 contenedores arriba y 5 `/health` en verde.
+- **Toca:** `cargar_secretos.sh`, `docker compose build --parallel 1`, `docker compose up -d`, `salud.sh`.
+- **Criterio de aceptación:** los 5 `/health` responden `ok`; `docker compose ps` sin reinicios; el tablero abre.
+- **Confirmación humana:** **sí** para `docker compose up -d`.
+
+### I5. Cerrar el ciclo MLOps
+
+- **Objetivo:** la VM usa el modelo del registro.
+- **Toca:** `desplegar_config.sh`.
+- **Criterio de aceptación:** `docker compose exec inference env | grep INFERENCE_MODELO` muestra el modelo ganador de I0.
+- **Confirmación humana:** no.
+
+### I6. Prueba de humo externa
+
+- **Objetivo:** mensaje real al bot, `POST /mensajes` → 202, acceso bloqueado desde IP no autorizada.
+- **Toca:** mensaje al bot, `curl -X POST`, prueba desde datos móviles.
+- **Criterio de aceptación:** las tres pruebas pasan.
+- **Confirmación humana:** no.
+
+### I7. Entrega al equipo
+
+- **Objetivo:** completar `ENTREGA_EQUIPO.md` y compartirlo.
+- **Toca:** `docs/microproyecto3/ENTREGA_EQUIPO.md`.
+- **Criterio de aceptación:** documento completo con IP, URLs, accesos y restricciones.
+- **Confirmación humana:** no.
+
+### I8. Operación durante las pruebas y limpieza
+
+- **Objetivo:** encender, apagar, redimensionar, autorizar IP, y limpieza final.
+- **Toca:** `az vm start`, `az vm deallocate`, `terraform apply` para cambios de tamaño, `az group delete` (solo si Juan lo pide).
+- **Criterio de aceptación:** VM apagada al terminar cada sesión; limpieza final cuando Juan lo decida.
+- **Confirmación humana:** **sí** para `az vm deallocate` y `az group delete`.
 
 ---
 

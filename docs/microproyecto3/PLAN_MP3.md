@@ -175,16 +175,16 @@ El demo cuesta del orden de **USD 11 en dos semanas** si la VM se apaga fuera de
 | Recurso | Tamaño o SKU | Precio unitario (USD), verificado en `westus` | Demo: 2 semanas | Operación 24/7: mes |
 | --- | --- | --- | --- | --- |
 | VM de microservicios | Standard\_B2s (2 vCPU, 4 GB) | **0,0496** / hora | 2,78 (56 h: 4 h/día) | 36,21 (730 h) |
-| Disco del SO | Standard SSD 32 GB, banda **E1 LRS** | **0,30** / mes. Se cobra aunque la VM esté apagada | 0,14 | 0,30 |
+| Disco del SO | Standard SSD 32 GB, banda **E4 LRS** | **2,40** / mes. Se cobra aunque la VM esté apagada | 1,12 | 2,40 |
 | IP pública | Standard IPv4 estática | **0,005** / hora. Al ser estática, factura aunque la VM esté apagada | 1,68 (14 × 24 h) | 3,65 (730 h) |
 | Workspace de Azure ML | — | Sin costo propio | 0 | 0 |
 | Clúster de cómputo | Standard\_DS2\_v2, mín. 0 nodos, máx. 2 | **0,14** / hora por nodo, solo mientras corre | 0,84 (6 h de nodo) | ~3,4 (4 corridas de 6 h) |
 | Container Registry | Basic | **0,1666** / día. Se crea al construir el primer Environment | 2,33 (14 días) | 5,07 (30,4 días) |
 | Storage + Key Vault + Application Insights | Creados con el workspace | ~0, dentro del nivel gratuito de cada uno | ~0,30 | ~1 |
 | Groq, evaluaciones | gpt-oss-20b ≈ 0,10 entrada / 0,50 salida por millón de tokens | ~0,25 por corrida de 340 mensajes con 20b. **Estimado, no verificado** | ~3 (~6 corridas) | ~2 |
-| **Total** |  |  | **≈ 11** (≈ 8,1 de Azure) | **≈ 52** (≈ 50 de Azure) |
+| **Total** |  |  | **≈ 12** (≈ 9,9 de Azure) | **≈ 54** (≈ 52 de Azure) |
 
-**Cómo se verificó cada medidor.** La API devuelve un precio por medidor, y cada SKU de VM tiene varios medidores legítimos en la misma región. Para `Standard_B2s_v2` en `westus` devuelve ocho filas y la correcta es la de `Virtual Machines Bsv2 Series` a 0,0992: las otras siete son Windows, Low Priority, Spot o Cloud Services. Tomar la primera fila o la más barata da un número plausible y equivocado. El disco tampoco tiene un precio único: `Standard SSD` va por bandas `E1` a `E80` y el tamaño decide; 32 GB cae en `E1 LRS` a 0,30/mes, no en `E4` a 2,4, que es la banda de hasta 256 GiB. Detalle en `PROGRESO.md`, H16.
+**Cómo se verificó cada medidor.** La API devuelve un precio por medidor, y cada SKU de VM tiene varios medidores legítimos en la misma región. Para `Standard_B2s_v2` en `westus` devuelve ocho filas y la correcta es la de `Virtual Machines Bsv2 Series` a 0,0992: las otras siete son Windows, Low Priority, Spot o Cloud Services. Tomar la primera fila o la más barata da un número plausible y equivocado. El disco tampoco tiene un precio único: `Standard SSD` va por bandas `E1` a `E80` y el tamaño decide; 32 GB cae en `E4 LRS` a 2,40/mes. Detalle en `PROGRESO.md`, H16 y H17.
 
 La IP pública se cobra por el tiempo que **existe**, no por el tiempo que la VM corre: por eso la columna del demo usa 14 × 24 h y no las 56 h de cómputo. El disco, por el mismo motivo, se cobra los 14 días aunque la VM esté apagada casi todo el tiempo.
 
@@ -471,6 +471,8 @@ Verificación: el grafo muestra los 5 pasos en verde; Jobs → `sirena-evaluacio
 
 ### Fase 7 — VM de microservicios
 
+> **Reemplazada por PLAN_INFRA.md (VM con Terraform, tickets I1 a I6).**
+
 ```bash
 MI_IP=$(curl -s https://ifconfig.me)   # desde el PC del equipo, no desde Cloud Shell
 az vm create --resource-group rg-sirena-mp3 --name vm-sirena --image Ubuntu2204 \
@@ -501,6 +503,8 @@ curl -s localhost:8000/health; curl -s localhost:8003/health
 Verificación: el tablero abre en `http://<IP pública>:8501` desde el PC del equipo y no abre desde otra red (datos móviles). Si se generaron las llaves SSH en Cloud Shell, conectarse desde Cloud Shell; desde Windows usar `ssh-keygen` y pasar `--ssh-key-values` al crear la VM.
 
 ### Fase 8 — Cerrar el ciclo: la VM usa el modelo registrado
+
+> **Reemplazada por PLAN_INFRA.md (VM con Terraform, tickets I1 a I6).**
 
 ```bash
 # En la VM: azureml/scripts/desplegar_config.sh
