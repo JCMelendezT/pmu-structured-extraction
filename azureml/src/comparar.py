@@ -181,3 +181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Ganador: {decision['ganador']}")
     print(f"Razon: {decision['razon']}")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -314,3 +314,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=os.environ.get("MLFLOW_RUN_ID") or JOB_ID_LOCAL,
     )
     return parser.parse_args(argv)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

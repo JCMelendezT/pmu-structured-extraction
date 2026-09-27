@@ -166,3 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"{metricas.errores_validacion} | Latencia media: {metricas.latencia_media_ms:.1f} ms"
     )
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
