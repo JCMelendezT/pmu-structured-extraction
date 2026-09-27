@@ -37,6 +37,16 @@ La suscripción es Azure for Students: crédito limitado, 3 IP públicas, region
 - Antes de cada commit: `make lint`, `make format-check` y `make test` en verde. Un ticket no se marca como hecho con pruebas fallando.
 - Commits pequeños, uno por ticket, con mensaje que diga qué y por qué.
 
+## Edición de archivos
+
+Estas reglas existen porque un `Set-Content` de PowerShell 5.1 dejó un archivo del repo con todos los acentos convertidos en mojibake (`Sesión` → `SesiÃ³n`), 142 líneas modificadas y un BOM, en un cambio que debería haber tocado tres líneas. Se recuperó con `git checkout` y se rehízo. Cada sesión arranca en frío, así que la regla queda escrita acá y no en la memoria de una conversación.
+
+- **Todo archivo de texto del repo se edita con la herramienta de edición, nunca con la shell.** Está prohibido `Set-Content`, `Add-Content`, `Out-File`, `echo >>`, `>>` y cualquier redirección de PowerShell o bash sobre un archivo del repo, incluso para un reemplazo puntual de una línea.
+- La razón es técnica, no de estilo: PowerShell 5.1 lee y escribe con la codificación por defecto del sistema, no con UTF-8. Sobre un archivo con acentos eso no agrega caracteres: los destroza.
+- **Todo archivo de texto es UTF-8 sin BOM.**
+- Si un `git diff --stat` crece mucho más que el cambio pedido, **algo está mal**: es casi siempre BOM o fines de línea. Revertir con `git checkout -- <archivo>` y rehacer con la herramienta de edición. No intentar reparar el archivo a mano.
+- Comprobación rápida tras editar texto con acentos, antes de commitear: los primeros bytes deben ser los del primer carácter del archivo, y el archivo no debe contener `Ã` ni `â€`.
+
 ## Entorno del humano
 
 - El equipo trabaja en Windows. Los bloques bash del plan se corren en Git Bash, WSL o Azure Cloud Shell; si el agente propone un comando para PowerShell, lo traduce (variables, continuación de línea con acento grave, comillas).
