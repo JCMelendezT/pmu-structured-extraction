@@ -309,6 +309,17 @@ El comando se ejecutó sin necesidad de un `az login` adicional: el token del ú
 - **Confirmación humana:** **sí**. Costo estimado por el plan, a confirmar en la calculadora.
 - **Precondición:** B3b tiene que estar hecho. Si el presupuesto no existe, este ticket no arranca.
 
+**Resultado: hecho.** El workspace `mlw-sirena` existe en `rg-sirena-mp3` con `provisioningState: Succeeded`. Despliegue `mlw-sirena-5948415` completado.
+
+- **`mlflow_tracking_uri`**: `azureml://westus.api.azureml.ms/mlflow/v1.0/subscriptions/1ba330a0-5897-4ef6-8fd1-d304b0e766d1/resourceGroups/rg-sirena-mp3/providers/Microsoft.MachineLearningServices/workspaces/mlw-sirena`
+- **Discovery URL**: `https://westus.api.azureml.ms/discovery`
+- **Notebook FQDN**: `ml-mlw-sirena-westus-f1f0a3bc-dfdb-48fc-b1d6-39784fe5f29d.westus.notebooks.azure.net`
+- **Recursos creados dentro del presupuesto de 30 USD**: Storage (`mlwsirenstorage50b27a14d`), Key Vault (`mlwsirenkeyvault18607254`), Log Analytics (`mlwsirenlogalytif9b602f2`), Application Insights (`mlwsireninsights8a667a82`), y el workspace (`mlw-sirena`).
+- **Nota**: el workspace se creó sin Container Registry standalone vinculado (propiedad `containerRegistry` es null). Azure ML usa registros administrados por defecto. Si B6 necesita un ACR explícito, se crea aparte y se vincula al workspace.
+- **`az configure --defaults group=rg-sirena-mp3 location=westus`** aplicado.
+- **Studio**: accesible en el portal de Azure (el workspace está `Succeeded` y el notebook FQDN está asignado). No se abrió desde esta terminal, pero el recurso existe y es accesible.
+- **Costo esperado**: Storage (0,30/mes) + Key Vault (~1/mes) + Application Insights (~1/mes) ≈ 2,3/mes, muy dentro de los 30 USD del presupuesto.
+
 ### B5. Subir el corpus como Data asset versionado
 
 - **Toca:** Data asset `gold_v1` con `dev.jsonl` y `eval.jsonl`.
