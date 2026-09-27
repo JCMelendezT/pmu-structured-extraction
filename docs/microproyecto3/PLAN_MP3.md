@@ -23,7 +23,7 @@ El plan reutiliza lo ya practicado: VM Ubuntu del módulo IaaS para los microser
 
 | Fuente | Qué aporta | Cómo se usa aquí |
 | --- | --- | --- |
-| Práctica IaaS (Azure VM) | Ubuntu Server 22.04 LTS, tamaño sugerido Standard\_DS1\_v2, regiones alternativas si no hay capacidad | La VM que aloja los 5 microservicios, el frontend y el bot de Telegram. Se sube a B2s\_v2 porque 3,5 GB de RAM no alcanzan para 7 contenedores |
+| Práctica IaaS (Azure VM) | Ubuntu Server 22.04 LTS, tamaño sugerido Standard\_DS1\_v2, regiones alternativas si no hay capacidad | La VM que aloja los 5 microservicios, el frontend y el bot de Telegram. Se sube a B2s (4 GB) porque 3,5 GB no alcanzan para 7 contenedores. Si tampoco alcanza, hay una escalera de redimensionado documentada en Riesgos |
 | Práctica REST y REST + MySQL | API REST en Flask, pruebas con curl y Postman, pregunta de persistencia al apagar la máquina | SIRENA ya es REST (FastAPI). La pregunta de persistencia se responde con el volumen Docker de SQLite en el disco de la VM |
 | Diapositivas API REST | Recursos, métodos HTTP, códigos de respuesta, JSON | Justifica el contrato `docs/CONTRATOS_SISTEMA.md` en la presentación |
 | Guía de regiones | `az policy assignment show --name sys.regionrestriction` para ver regiones permitidas | Paso 0 del demo, antes de crear el grupo de recursos |
@@ -166,25 +166,35 @@ Por qué esto cuenta como pipeline de Azure ML aunque no haya entrenamiento: el 
 
 ## Cálculo aproximado de costos
 
-El demo cuesta del orden de USD 12 en dos semanas si la VM se apaga fuera de las pruebas; operando 24/7 sería del orden de USD 45 al mes más el consumo de Groq. **El despliegue es en `westus` (decidido en B1), no en `eastus`.** Los precios de lista se consultaron en `eastus` y son aproximados: hay que confirmarlos en `westus` y en la calculadora. Con el cambio de SKU a `Standard_B2s_v2` el único precio que estaba verificado contra la API quedó obsoleto, así que **ninguno está verificado** hasta que se vuelva a consultar.
+**Todos los precios de esta tabla están verificados contra `prices.azure.com` con `armRegionName eq 'westus'`, `priceType eq 'Consumption'`, medidor de la serie Linux y pago-por-uso.** Lo único con `~` es lo que no se pudo verificar: el consumo de Groq, que no es de Azure, y el volumen de datos que el Container Registry y Storage van a mover, que depende del tamaño de las imágenes. La tabla anterior estaba en `eastus` y tenía el disco mal por un factor de 8 (H16).
 
-| Recurso | Tamaño o SKU | Precio unitario (USD) | Demo: 2 semanas | Operación 24/7: mes |
+El demo cuesta del orden de **USD 11 en dos semanas** si la VM se apaga fuera de las pruebas; operando 24/7 serían del orden de **USD 52 al mes**, Groq incluido.
+
+**La VM es `Standard_B2s` (2 vCPU, 4 GB), no `Standard_B2s_v2`.** La razón es el precio, no la cuota: `B2s_v2` cuesta 0,0992/hora contra 0,0496 de `B2s`, **exactamente el doble**. Se necesita una sola VM de 2 vCPU, y los 4 vCPU de `standardBSFamily` sobran: los 10 de `standardBsv2Family` no compran nada que el proyecto use. El riesgo de RAM al construir las 7 imágenes tiene su propia escalera en la tabla de Riesgos, y se paga solo si hace falta.
+
+| Recurso | Tamaño o SKU | Precio unitario (USD), verificado en `westus` | Demo: 2 semanas | Operación 24/7: mes |
 | --- | --- | --- | --- | --- |
-| VM de microservicios | Standard\_B2s\_v2 (2 vCPU, 4 GB) | ~0,045 / hora. **El precio verificado de `Standard_B2s` (0,0416) era de otro SKU y hay que re-verificarlo** ([API de precios](https://prices.azure.com/api/retail/prices?$filter=armRegionName%20eq%20%27westus%27%20and%20armSkuName%20eq%20%27Standard_B2s_v2%27%20and%20priceType%20eq%20%27Consumption%27)) | ~2,5 (56 h: 4 h/día) | ~33 (730 h) |
-| Disco del SO | Standard SSD 32 GB | ≈ 2,4 / mes (se cobra aunque la VM esté apagada) | 1,2 | 2,4 |
-| IP pública | Standard, estática | ≈ 0,005 / hora | 1,8 | 3,7 |
+| VM de microservicios | Standard\_B2s (2 vCPU, 4 GB) | **0,0496** / hora | 2,78 (56 h: 4 h/día) | 36,21 (730 h) |
+| Disco del SO | Standard SSD 32 GB, banda **E1 LRS** | **0,30** / mes. Se cobra aunque la VM esté apagada | 0,14 | 0,30 |
+| IP pública | Standard IPv4 estática | **0,005** / hora. Al ser estática, factura aunque la VM esté apagada | 1,68 (14 × 24 h) | 3,65 (730 h) |
 | Workspace de Azure ML | — | Sin costo propio | 0 | 0 |
-| Clúster de cómputo | Standard\_DS2\_v2, mín. 0 nodos, máx. 2 | ≈ 0,15 / hora por nodo solo mientras corre | 0,9 (≈ 6 h de jobs) | 0,6 (1 evaluación semanal) |
-| Container Registry | Basic (se crea al construir el primer Environment) | ≈ 0,17 / día | 2,3 | 5,0 |
-| Storage + Key Vault + Application Insights | Creados con el workspace | Centavos por GB y por operación | < 1 | ≈ 1 |
-| Groq, evaluaciones | gpt-oss-20b ≈ 0,10 entrada / 0,50 salida por millón de tokens | ≈ 0,25 por corrida de 340 mensajes con 20b; algo más con 120b | ≈ 3 (≈ 6 corridas) | ≈ 2 |
-| **Total aproximado** |  |  | **≈ 12** | **≈ 45 + tráfico real en Groq** |
+| Clúster de cómputo | Standard\_DS2\_v2, mín. 0 nodos, máx. 2 | **0,14** / hora por nodo, solo mientras corre | 0,84 (6 h de nodo) | ~3,4 (4 corridas de 6 h) |
+| Container Registry | Basic | **0,1666** / día. Se crea al construir el primer Environment | 2,33 (14 días) | 5,07 (30,4 días) |
+| Storage + Key Vault + Application Insights | Creados con el workspace | ~0, dentro del nivel gratuito de cada uno | ~0,30 | ~1 |
+| Groq, evaluaciones | gpt-oss-20b ≈ 0,10 entrada / 0,50 salida por millón de tokens | ~0,25 por corrida de 340 mensajes con 20b. **Estimado, no verificado** | ~3 (~6 corridas) | ~2 |
+| **Total** |  |  | **≈ 11** (≈ 8,1 de Azure) | **≈ 52** (≈ 50 de Azure) |
+
+**Cómo se verificó cada medidor.** La API devuelve un precio por medidor, y cada SKU de VM tiene varios medidores legítimos en la misma región. Para `Standard_B2s_v2` en `westus` devuelve ocho filas y la correcta es la de `Virtual Machines Bsv2 Series` a 0,0992: las otras siete son Windows, Low Priority, Spot o Cloud Services. Tomar la primera fila o la más barata da un número plausible y equivocado. El disco tampoco tiene un precio único: `Standard SSD` va por bandas `E1` a `E80` y el tamaño decide; 32 GB cae en `E1 LRS` a 0,30/mes, no en `E4` a 2,4, que es la banda de hasta 256 GiB. Detalle en `PROGRESO.md`, H16.
+
+La IP pública se cobra por el tiempo que **existe**, no por el tiempo que la VM corre: por eso la columna del demo usa 14 × 24 h y no las 56 h de cómputo. El disco, por el mismo motivo, se cobra los 14 días aunque la VM esté apagada casi todo el tiempo.
 
 Supuestos del cálculo de Groq: unas 680 llamadas por corrida (2 etapas × 340 mensajes), del orden de 1,5 mil tokens de entrada por llamada porque el prompt incluye la ontología, y salida inflada por los tokens de razonamiento de gpt-oss. El plan gratuito de Groq puede cubrirlo, pero sus límites de peticiones por minuto alargan la corrida.
 
+Lo que la tabla **no** incluye y hay que medir con la calculadora antes de la sustentación: el tráfico de datos del Container Registry (0,10/GB/mes, depende del tamaño de las imágenes), las operaciones de disco (0,0026 por 10 000) y cualquier lectura de Storage una vez que el corpus y los prompts estén subidos.
+
 Para el entregable: armar el mismo escenario en la [calculadora de precios](https://azure.microsoft.com/es-es/pricing/calculator/) (Virtual Machines, Azure Machine Learning con el tamaño del clúster y horas, Container Registry, Storage, IP pública), exportarlo y adjuntarlo. Mostrar en la presentación las dos columnas: demo y operación.
 
-Controles de costo: presupuesto con alerta al 50 % y 80 % del crédito, `min_instances: 0` y `idle_time_before_scale_down: 120` en el clúster, `az vm deallocate` al terminar cada sesión, y borrado del grupo de recursos después de la sustentación.
+Controles de costo: **presupuesto con alertas al 50 % y 80 % del crédito, creado antes del workspace** (ticket B3b: el workspace crea Storage, Key Vault, Application Insights y el Container Registry, que facturan desde que existen), `min_instances: 0` y `idle_time_before_scale_down: 120` en el clúster, `az vm deallocate` al terminar cada sesión, y borrado del grupo de recursos después de la sustentación.
 
 ## 2. Propuesta de diseño (25 %)
 
@@ -462,7 +472,7 @@ Verificación: el grafo muestra los 5 pasos en verde; Jobs → `sirena-evaluacio
 ```bash
 MI_IP=$(curl -s https://ifconfig.me)   # desde el PC del equipo, no desde Cloud Shell
 az vm create --resource-group rg-sirena-mp3 --name vm-sirena --image Ubuntu2204 \
-  --size Standard_B2s_v2 --admin-username azureuser --generate-ssh-keys \
+  --size Standard_B2s --admin-username azureuser --generate-ssh-keys \
   --public-ip-sku Standard --assign-identity
 az network nsg rule update -g rg-sirena-mp3 --nsg-name vm-sirenaNSG -n default-allow-ssh \
   --source-address-prefixes $MI_IP/32
@@ -594,7 +604,7 @@ El riesgo más probable es de capacidad o cuota en Azure, no de código; por eso
 | --- | --- | --- |
 | Sin capacidad o sin cuota para el clúster en `westus` | `SkuNotAvailable`, `OutOfQuota`, `QuotaExceeded` | **`Standard_D2as_v4`, que no es un tamaño más chico sino OTRO POZO de cuota.** `Standard_DS2_v2` factura en `standardDSv2Family` y `Standard_D2as_v4` en `standardDASv4Family`: son familias con cuota independiente, cada una con 4 vCPU. Usar una deja la otra enteramente libre, así que el fallback funciona de verdad y no falla por la misma razón que el plan A. Y ambos son 2 vCPU, así que `max-instances 2` sigue valiendo. Confirmado en B1 |
 | Sin capacidad en ninguna de las dos regiones | `SkuNotAvailable` en `westus` y en `francecentral` | Cambiar a `francecentral` y recalcular la latencia p95, o usar la suscripción del otro integrante. **`brazilsouth` queda descartado: la política lo bloquea.** Es la única región latinoamericana con Azure ML disponible y no se puede usar |
-| VM sin RAM al construir 7 imágenes | Build lento o contenedores reiniciando | Construir en serie (`docker compose build --parallel 1`) o subir a **`Standard_B4s_v2` (4 vCPU, 16 GB)**. Es el Plan B correcto porque `standardBsv2Family` tiene 10 vCPU: entran 5 VMs de 2 vCPU, o sea que el salto a 4 vCPU cabe de sobra en la misma familia. El `Standard_B2ms` que figuraba antes no sirve: es de la familia `standardBmsFamily`, que es otra cuota distinta y no se midió |
+| VM sin RAM al construir 7 imágenes | Build lento o contenedores reiniciando, `OOMKilled` | **Escalera de tres peldaños, en este orden.** El peldaño 1 no cuesta nada y resuelve el caso común, así que se prueba primero: (1) construir en serie, `docker compose build --parallel 1`. Si aun así falla: (2) redimensionar a `Standard_B2s_v2` (2 vCPU, 8 GB) a **0,0992/hora**, el doble de la B2s. Si sigue sin alcanzar: (3) redimensionar a `Standard_B4s_v2` (4 vCPU, 16 GB) a **0,198/hora**. Precios verificados en `westus`. Redimensionar es `az vm deallocate`, `az vm resize --size <SKU>`, `az vm start`: **conserva el disco y los datos, no hay que reinstalar ni reconstruir las imágenes**. Los dos peldaños de pago están en `standardBsv2Family`, que tiene 10 vCPU: el salto a 4 vCPU entra de sobra en la misma familia. **No** se paga el doble desde el primer día por un riesgo que el peldaño 1 resuelve gratis |
 | Región bloqueada por política | `RequestDisallowedByPolicy` | Volver a la lista de regiones permitidas de la guía del curso. Ojo: de las cinco permitidas, solo `westus` y `francecentral` tienen Azure ML disponible, y `RequestDisallowedByPolicy` **no** es la señal de que falte ML en una región: esa da otro error. Verificado en B1 |
 | `azureml-mlflow` incompatible con mlflow 3.x | Error al construir el Environment o al registrar métricas | Fijar la versión de mlflow compatible solo en `azureml/env/requirements.txt`, sin tocar el lock del repo |
 | MLflow rechaza `set_experiment` dentro del job | Error de experimento o de run activo en `evaluar_modelo` | `experiment_name: sirena-evaluacion` en el pipeline (ya incluido) y, si persiste, el ajuste en `registro.py` |
@@ -623,6 +633,6 @@ El riesgo más probable es de capacidad o cuota en Azure, no de código; por eso
 - [Configurar MLflow para Azure ML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-use-mlflow-configure-tracking?view=azureml-api-2)
 - [SKUs de endpoints en línea gestionados](https://learn.microsoft.com/en-us/azure/machine-learning/reference-managed-online-endpoints-vm-sku-list?view=azureml-api-2)
 - [Comandos az ml compute](https://learn.microsoft.com/en-us/cli/azure/ml/compute?view=azure-cli-latest)
-- [API de precios de Azure, Standard\_B2s\_v2 en westus](https://prices.azure.com/api/retail/prices?$filter=armRegionName%20eq%20%27westus%27%20and%20armSkuName%20eq%20%27Standard_B2s_v2%27%20and%20priceType%20eq%20%27Consumption%27) — el despliegue es en `westus`; la consulta necesita re-verificarse porque el precio anotado antes era de `Standard_B2s` en `eastus`, otro SKU y otra región
+- [API de precios de Azure, medidores verificados en `westus`](https://prices.azure.com/api/retail/prices?$filter=armRegionName%20eq%20%27westus%27%20and%20priceType%20eq%20%27Consumption%27) — la tabla de costos se construyó desde acá. Ojo: devuelve un precio por medidor, no por SKU, y hay que elegir la fila de la serie Linux y pago-por-uso, no la de Windows, Low Priority, Spot o Cloud Services (H16)
 - [Precio de gpt-oss-20b en Groq (Requesty)](https://www.requesty.ai/models/groq/openai-gpt-oss-20b)
 - [Calculadora de precios de Azure](https://azure.microsoft.com/es-es/pricing/calculator/)

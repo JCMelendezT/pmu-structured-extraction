@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Etapa A cerrada, B1 hecho.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6, A7, A8 y A9 hechos; A3 revertido y absorbido en A5. **La Etapa A está completa y es código, no Azure**. B1 midió regiones, cuota y proveedores y fijó región, tamaño de clúster y tamaño de VM (D8, D9). Sigue abierto H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`; no se corrigió en silencio porque es un cambio de contrato del equipo, no un refactor. H14 y H15 nacieron de B1 y quedan documentados acá: casi borran el Plan B del clúster.
+Estado de este documento: **Etapa A cerrada, B1 y B1b hechos, B2 a medias.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6, A7, A8 y A9 hechos; A3 revertido y absorbido en A5. **La Etapa A está completa y es código, no Azure**. B1 midió regiones, cuota y proveedores y fijó región y tamaño de clúster (D8, D9); B1b rehízo la tabla de costos con precios verificados de `westus` y el precio real devolvió la VM a `Standard_B2s` (D10), con una escalera de tres peldaños para el riesgo de RAM. **B2 está a medias: los tres proveedores quedaron en `Registering` y el grupo de recursos NO se creó**, porque `az group create` falló con `AADSTS50076` (MFA requerido en el token en caché). Hay que hacer `az login` y repetir solo ese comando. H7 cerrado en F7 con visto bueno del humano. H14, H15 y H16 nacieron de medir en vez de suponer: H14 casi borra el Plan B del clúster y H16 tenía el disco mal por un factor de 8.
 
 ---
 
@@ -23,7 +23,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 | H5 | El plan afirma que "agregar otro proveedor no toca el resto del código", y eso no aplica al harness de evaluación: `evaluacion.main()` construye `ServicioInferencia(ProveedorGroq())` de forma directa | `backend/inference/inference/evaluacion.py:812` | **Resuelto.** Aclarado en el plan: aplica al servicio Inference, no al harness. `evaluar.py` construye su propio servicio y `evaluacion.py` no se toca (D7) |
 | H6 | El `.amlignore` está especificado en `azureml/`, pero el contexto que se sube con `code: ../..` es el repo raíz, así que ahí no tendría efecto | Fase 5 del plan, campo `code: ../..` | **Pendiente.** Ticket A7: el `.amlignore` va en la raíz |
 | H13 | Las referencias `${{keyvault:...}}` del plan asumían que el Environment podía inyectar secretos a los jobs. **No es así:** solo existen para online endpoints y deployments. Para command y pipeline jobs la vía documentada es `SecretClient` + `DefaultAzureCredential` con la identidad administrada del compute | `how-to-deploy-online-endpoint-with-secret-injection` vs `how-to-use-secrets-in-runs`; plan L318, L348, L374 | **Resuelto.** A3 revertido; la lectura del secreto se hace en `evaluar.py` (A5) y se quita el `export` del comando del componente |
-| H7 | `AGENTS.md` describe el LLM como "Llama 3.1 8B Instruct", pero el código y `.env.example` usan `openai/gpt-oss-20b` | `AGENTS.md` vs `backend/inference/inference/proveedor.py:83` | **Abierto.** No se corrigió en silencio. Propuesta: una línea de corrección. Requiere visto bueno del equipo |
+| H7 | `AGENTS.md` describe el LLM como "Llama 3.1 8B Instruct", pero el código y `.env.example` usan `openai/gpt-oss-20b` | `AGENTS.md` vs `backend/inference/inference/proveedor.py:83` | **Resuelto en F7** con visto bueno del humano. El código ya era correcto (`registro.py` registra `LICENCIA = "MIT"`, la de gpt-oss-20b); lo desactualizado eran dos líneas del documento. Va en el PR de la rama señalada como corrección de documentación para que el equipo lo apruebe |
 | H8 | La Fase 7 del plan clona el upstream, lo que descartaría los componentes de `azureml/` que viven en el fork | Fase 7 del plan, paso de clonado | **Pendiente.** El ticket D2 clona el fork y la rama `feature/azureml-pipeline` |
 | H9 | El profesor aceptó que el LLM se sirva desde Groq mientras la evaluación, la comparación, el registro y el despliegue vivan en Azure ML | Respuesta del profesor, 2026-09-26 | **Resuelto.** D5. La pregunta abierta quedó marcada en el plan |
 | H10 | No estaba definido sobre qué suscripción se monta todo, lo que bloqueaba los permisos del compañero y el alcance de los comandos | Decisión del equipo | **Resuelto.** D6: una sola suscripción, con rol acotado para el compañero |
@@ -31,6 +31,23 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 | H12 | Las 11 pruebas que fallaban eran **del entorno local, no del repo**: las 11 son `spacy.load("es_core_news_md")` y el modelo en español faltaba en esta máquina. `Makefile:8` ya lo descarga en `make install`, o sea que en el equipo que hizo el repo sí estaba. Con el modelo instalado, las 11 pasan | `backend/process/process/anonimizacion.py:70`, 7 pruebas en `test_anonimizacion.py` y 4 en `test_orquestador.py` | **Resuelto.** `uv run --package process python -m spacy download es_core_news_md`. Sin cambios en el repo |
 | H14 | Al medir la cuota del Plan B del clúster se consultó la familia equivocada: `standardDAv4Family` en lugar de `standardDASv4Family`. Son dos familias distintas, y la segunda es la que factura `Standard_D2as_v4`. El 0 de la primera se leyó como "este SKU no tiene cuota" | `az vm list-usage -l westus` contrastado con el campo `family` de `Microsoft.Compute/skus` | **Resuelto antes de tocar el plan.** H14 en detalle abajo. `Standard_D2as_v4` se mantiene |
 | H15 | La tabla de cuota por SKU de `quota_usage_check` no lista todos los SKUs: omitió `Standard_DS2_v2`, que sí existe y sí tiene cuota. La ausencia en esa tabla no prueba falta de cuota | `quota_usage_check` en `chilecentral` vs `az vm list-skus` en la misma región | **Resuelto.** La cuota que gobierna el escalado es la de familia, no la tabla por SKU |
+| H16 | La tabla de costos del plan estaba **en `eastus` y además con el disco mal por un factor de 8**. El disco de 32 GB se cotizó a ≈ 2,4/mes, que es el precio de `E4 LRS` (hasta 256 GiB); un `Standard SSD` de 32 GB cae en la banda `E1 LRS`, que cuesta **0,30/mes**. El error viene de la misma clase que H14: un número copiado de un documento en vez de consultado | `prices.azure.com/api/retail/prices` con `armRegionName eq 'westus'`, filtrando `Standard SSD Managed Disks` | **Resuelto.** Ticket B1b: tabla de costos entera rehecha con precios de `westus` verificados |
+
+### H16 en detalle: por qué la API de precios devuelve ocho filas por SKU
+
+La API de precios de Azure no devuelve "el precio de un SKU": devuelve **un precio por medidor**, y un SKU de VM tiene varios medidores legítimos en la misma región. Consultar `Standard_B2s_v2` en `westus` devuelve ocho filas:
+
+| Medidor | Precio/hora | ¿Sirve? |
+| --- | --- | --- |
+| Virtual Machines Bsv2 Series | **0,0992** | **Sí.** Es el que queríamos |
+| Virtual Machines Bsv2 Series Windows | 0,108 | No: es Windows |
+| Bsv2 Series Cloud Services | 0,108 | No: es la tarifa de cloud services, no la VM |
+| B2s v2 Low Priority | 0,0198 | No: es spot, no paga-por-uso |
+| B2s v2 Low Priority Windows | 0,0434 | No |
+| B2s v2 Spot | 0,08928 | No: es spot |
+| B2s v2 Spot Windows | 0,0972 | No |
+
+Tomar la primera fila, o la más barata, da un número plausible y equivocado. La fila correcta es la de `productName` con el nombre de la **serie**, sin `Windows`, sin `Low Priority`, sin `Spot` y sin `Cloud Services`. Lo mismo con el disco: `Standard SSD` no tiene un precio único, tiene bandas `E1` a `E80` y el tamaño decide la banda.
 
 ### H14 en detalle: el casi-accidente que casi nos deja sin Plan B
 
@@ -60,8 +77,10 @@ B1 iba a corregir el plan para borrar `Standard_D2as_v4` del Plan B del clúster
 | D5 | Se mantiene L1 (Groq). L2 (Azure AI Foundry) queda **descartada**, sin plan de implementación | 2026-09-26 (profesor) | Actualizado en el plan |
 | D6 | Todo se monta en una sola suscripción "Azure for Students", la del propietario. El compañero entra con `Contributor` acotado a `rg-sirena-mp3`. La autoría va en los tags `autor` y `rama` de MLflow, no en la suscripción | 2026-09-27 | Tickets B2, B3 |
 | D7 | `evaluar.py` construye `ServicioInferencia(ProveedorGroq())` directamente, igual que el harness. **Sin** `SIRENA_PROVEEDOR` ni punto de extensión de proveedor, y **sin** `ProveedorAzure` | 2026-09-27 | Ticket A5 |
-| D8 | Región **`westus`**, clúster `Standard_DS2_v2` (min 0, max 2), VM `Standard_B2s_v2`. Descartada `francecentral`: también sirve, pero la latencia p95 que el proyecto **reporta como métrica** tiene que ser representativa del sistema y no de la geografía. Los jobs no llaman a un endpoint de Azure, llaman a la API de Groq, que es infraestructura de EE.UU.; correr el clúster del mismo lado que Groq es lo que hace la métrica comparable con la de producción. Si `westus` da `SkuNotAvailable`, el Plan B es `francecentral`, no otro SKU | 2026-09-27 | Tickets B2, B4, B7. `brazilsouth` **no** es Plan B: la política lo bloquea |
+| D8 | Región **`westus`**, clúster `Standard_DS2_v2` (min 0, max 2), VM `Standard_B2s` (ver D10). Descartada `francecentral`: también sirve, pero la latencia p95 que el proyecto **reporta como métrica** tiene que ser representativa del sistema y no de la geografía. Los jobs no llaman a un endpoint de Azure, llaman a la API de Groq, que es infraestructura de EE.UU.; correr el clúster del mismo lado que Groq es lo que hace la métrica comparable con la de producción. Si `westus` da `SkuNotAvailable`, el Plan B es `francecentral`, no otro SKU | 2026-09-27 | Tickets B2, B4, B7. `brazilsouth` **no** es Plan B: la política lo bloquea |
 | D9 | El workspace queda en EE.UU. **por la política de la suscripción de estudiante, no por diseño.** No hay región latinoamericana que cumpla las dos condiciones: `brazilsouth` tiene Azure ML disponible pero la política `sys.regionrestriction` la bloquea. La mitigación es que los mensajes se anonimizan en Process antes de salir hacia Groq o hacia Azure, así que lo que sale de Colombia no es el texto original. En la sustentación se dicen las dos cosas juntas: la limitación y la mitigación | 2026-09-27 | Ticket B4. Documentado en el plan para la presentación |
+| D10 | La VM es **`Standard_B2s` (2 vCPU, 4 GB)**, no `Standard_B2s_v2`, después de consultar el precio real en `westus`: 0,0496/hora contra 0,0992/hora de `Standard_B2s_v2`, **exactamente el doble**. El argumento que llevó a `B2s_v2` era el headroom de cuota, y es inválido: se necesita **una** VM de 2 vCPU, y los 4 vCPU de `standardBSFamily` sobran. Los 10 vCPU de `standardBsv2Family` no compran nada que el proyecto vaya a usar. El riesgo de RAM al construir las 7 imágenes se resuelve con una escalera de tres peldaños y no pagando el doble desde el día uno | 2026-09-27 | Ticket B1b. Escalera de escalation en la tabla de Riesgos del plan |
+| D11 | **El presupuesto con alertas al 50 % y 80 % se crea antes de B4, no después.** El grupo de recursos de B2 no cuesta nada, pero el workspace de B4 crea Storage, Key Vault, Application Insights y el Container Registry, que **sí facturan desde el minuto uno**. Crear el presupuesto después es crear la alarma después de que empiece el gasto | 2026-09-27 | Tickets B2, B3b. Orden explícito en el plan |
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
@@ -247,11 +266,30 @@ La cuota de vCPU es **por suscripción y familia, no por región**: las cinco re
 - **Criterio de aceptación:** `az role assignment list --scope <id de rg-sirena-mp3>` muestra al compañero con rol `Contributor`; el alcance no es la suscripción ni un nivel superior; no hay invitaciones pendientes porque ambos están en `uao.edu.co`.
 - **Confirmación humana:** **sí, siempre**. Cambia permisos, no crea recursos: ver la categoría específica en `REGLAS_AGENTE.md`.
 
+### B1b. Rehacer la tabla de costos con precios verificados de `westus`
+
+- **Objetivo:** que los costos del plan sean de la región donde se despliega, y no de `eastus`.
+- **Toca:** la tabla de costos de `PLAN_MP3.md` y su párrafo de totales. **Ninguna mutación.** Solo lectura contra `prices.azure.com`.
+- **Por qué antes de B4:** la tabla es parte del criterio del 20 % de requerimientos, y B4 es el primer recurso que gasta de verdad.
+- **Criterio de aceptación:** cada línea tiene precio verificado contra la API con `armRegionName eq 'westus'`, o la marca `~` de estimado. Los totales de demo y de 24/7 recalculados. La región `eastus` no aparece en ningún precio.
+- **Confirmación humana:** no (solo lectura). La **decisión** sobre qué línea es estimada la toma el humano.
+
+**Resultado: hecho.** H16 en detalle. Precios verificados y totales nuevos en la tabla del plan.
+
+### B3b. Crear el presupuesto con alertas al 50 % y 80 % — antes de B4
+
+- **Objetivo:** que exista una alarma antes de que empiece a facturar el workspace.
+- **Toca:** un presupuesto en Cost Management para la suscripción, con alertas al 50 % y al 80 %.
+- **Por qué antes de B4:** el grupo de recursos de B2 no cuesta nada, pero el workspace crea Storage, Key Vault, Application Insights y el Container Registry, que facturan desde que existen. Crear el presupuesto después es poner la alarma cuando ya se gastó.
+- **Criterio de aceptación:** el presupuesto existe con umbral mensual y las dos alertas configuradas; el correo o webhook de aviso está verificado.
+- **Confirmación humana:** **sí**. Crea un recurso de facturación, costo $0.
+
 ### B4. Crear el workspace y guardar el URI de MLflow
 
 - **Toca:** workspace `mlw-sirena` en `rg-sirena-mp3`; `az configure --defaults`.
 - **Criterio de aceptación:** el workspace existe; el `mlflow_tracking_uri` queda anotado en `PROGRESO.md`; Studio abre.
 - **Confirmación humana:** **sí**. Costo estimado por el plan, a confirmar en la calculadora.
+- **Precondición:** B3b tiene que estar hecho. Si el presupuesto no existe, este ticket no arranca.
 
 ### B5. Subir el corpus como Data asset versionado
 
@@ -426,6 +464,17 @@ Estado: **6 pendientes** (F1 a F5 y F7; F6 quedó hecha). Ninguna toca Azure.
 - **Qué está mal:** describe el LLM como "Llama 3.1 8B Instruct vía Groq" cuando el código usa `openai/gpt-oss-20b`. `AGENTS.md` es el archivo que leen los agentes antes de tocar el repo, así que la línea equivocada propaga el error a cualquier trabajo futuro.
 - **Criterio de aceptación:** `AGENTS.md` nombra el modelo que el código realmente usa, o dice explícitamente que la elección de modelo está en `registro.py` y no en el documento.
 - **Por qué no se hizo ya:** no es un refactor, es cambiar una descripción de contrato que el equipo puede haber escrito a propósito. Es la pregunta 3 de la sección siguiente.
+
+**Resultado: hecho, con visto bueno del humano y señalada para aprobación del equipo.** La instrucción fue: no decidirlo solo, pero tampoco dejarlo abierto; preparar la corrección como parte del PR de esta rama y seguir.
+
+Qué se cambió, y son dos líneas:
+
+1. La línea de contexto: "LLM de pesos abiertos (Llama 3.1 8B Instruct vía Groq)" pasa a "LLM de pesos abiertos (`openai/gpt-oss-20b` vía Groq)".
+2. La línea de tags de MLflow: "licencia Llama 3.1 Community License" pasa a "licencia del modelo realmente usado —`MIT` para `gpt-oss-20b`—", citando que es lo que registra `registro.py` con `LICENCIA = "MIT"`.
+
+**El código no se tocó: ya era el correcto.** `registro.py:43` define `LICENCIA = "MIT"` y `docs/CONFIG_PROVEEDORES.md:65` ya decía que `gpt-oss-20b` es "Actualable libre (MIT)". Lo desactualizado era el documento del equipo, no la implementación. El tag de licencia que se registraba ya era el correcto; lo que estaba mal era la línea que lo describía.
+
+**Lo que NO se tocó, a propósito:** `docs/propuesta/propuesta-final-sirena.md` y `docs/trabajo_futuro.md` también hablan de Llama 3.1. Son los entregables de los microproyectos 1 y 2, evaluados y ya entregados: reescribirlos cambia un documento histórico. `trabajo_futuro.md:78` ya registra la contradicción y la deja abierta a propósito. Si el equipo quiere cerrarla, es un ticket aparte y con su visto bueno.
 - **Confirmación humana:** no para escribir el cambio. **Sí** para decidir el texto, porque es un acuerdo de equipo.
 
 ---
@@ -455,3 +504,4 @@ Se responden en la etapa que las necesita, no antes.
 | 9 | 2026-09-27 | A8 hecho: los cuatro componentes y `pipeline.yml`, con 46 pruebas de coherencia entre cables, nombres y tipos. **El output de `comparar` es `uri_folder` y no `uri_file`**, porque `comparar.py` recibe `--salida` como carpeta y escribe `decision.json` adentro; se verificó en el código, no se asumió por el nombre. `autor` y `rama` se exponieron como inputs del pipeline, que sin eso dejaban toda corrida con `autor=sirena`. Salió **A9**: falta `azureml/src/registrar.py`, que el plan pide y A8 no cubría |
 | 10 | 2026-09-27 | **A9 hecho y con la Etapa A cerrada.** `registrar.py` registra `sirena-extractor` como `custom_model` con `MLClient`; nada de `mlflow.pyfunc.log_model`, que era el riesgo que el ticket anotaba y el plan L161 ya descartaba. Tres cosas se corrigieron contra la documentación oficial, no de memoria: **`identity` es clave del job y no del componente** (el esquema del command component no la tiene, y hay prueba que lo fija), **el `MLClient` no deduce el workspace dentro de un job** (los tres identificadores son inputs del pipeline, sin default porque el workspace no existe todavía), y **`decision.json` no basta para armar el paquete** (el informe del ganador vive en su carpeta de resultados, así que `registrar` recibe los dos `resultados`). `azure-ai-ml` quedó en el `Dockerfile` y no en `requirements.txt`, que se regenera con `uv export -o` y borraría la dependencia; el componente de registro perdió `key_vault_url` porque registrar no lee secretos. Salió **B10**: rol `AzureML Data Scientist` para la identidad del clúster, sin el cual el job falla con `Forbidden` al escribir. **Suite: 426 pasan, 1 xfail** |
 | 11 | 2026-09-27 | **A9 commiteado y pusheado; B1 hecho.** El equipo descubrió una inconsistencia en el informe de cuota y, al verificar la facturación real de cada SKU, apareció que **el Plan B del clúster se iba a borrar por error** (H14, detalle completo arriba). Decisiones D8 y D9: región `westus` porque la latencia p95 que el proyecto reporta tiene que medir el sistema y no la geografía, y el workspace en EE.UU. por política de la suscripción, con la mitigación de la anonimización en Process. `PROGRESO.md` se registró **antes** de tocar el plan, no al revés. **Suite: 427 pasan, 1 xfail** (sube por la prueba que prohíbe `default` en los identificadores de Azure, porque el repositorio es público) |
+| 12 | 2026-09-27 | **B2 a medias, B1b hecho, H7 cerrado.** B2: los tres proveedores quedaron en `Registered` (el registro es asíncrono y terminó bien), pero **`az group create` falló con `AADSTS50076`** — MFA requerido en el token en caché. Los comandos de lectura sí funcionan con ese token; el fallo es solo de escritura. **`rg-sirena-mp3` no existe** y hay que repetir únicamente ese comando después de un `az login`. Tres commits de documentación pusheados antes de esto. **B1b:** la tabla de costos del plan entera rehecha contra `prices.azure.com` con `armRegionName eq 'westus'`. Apareció **H16**: el disco de 32 GB estaba cotizado a ≈ 2,4/mes, que es el precio de la banda `E4` (hasta 256 GiB); el correcto es `E1 LRS` a **0,30/mes**, un factor de 8. Los precios que traía el equipo se confirmaron exactos contra la API: `Standard_B2s` 0,0496 y `Standard_B2s_v2` 0,0992. **D10: la VM vuelve a `Standard_B2s`** porque el headroom de cuota no justificaba pagar el doble por un riesgo que el peldaño 1 de la escalera resuelve gratis (construir en serie); los peldaños 2 y 3 son `B2s_v2` y `B4s_v2`, y redimensionar conserva el disco. **D11: el presupuesto va antes de B4**, porque el workspace crea Storage, Key Vault, Application Insights y Container Registry, que facturan desde que existen. **F7 cerrado** con dos líneas en `AGENTS.md` (Llama → `gpt-oss-20b`, y la licencia → MIT) señaladas en el PR como corrección de documentación para que el equipo apruebe; el código nunca estuvo mal. **Suite: 427 pasan, 1 xfail** |

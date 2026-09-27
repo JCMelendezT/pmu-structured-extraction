@@ -62,6 +62,16 @@ Descubiertos a pulso en esta máquina, con los que respondieron y los que no. La
 
 - **`az policy assignment show`: el parámetro de la política de regiones es `listOfAllowedLocations`, no `listOfAllowedRegions`.** Con el nombre equivocado la consulta devuelve `null`, que se lee como "sin restricción" si no se mira el JSON crudo.
 
+- **La API de precios devuelve un precio por MEDIDOR, no por SKU, y un SKU de VM tiene varios medidores legítimos.** `Standard_B2s_v2` en `westus` devuelve ocho filas. La única correcta es la de `productName` con el nombre de la **serie** (`Virtual Machines Bsv2 Series`), sin `Windows`, sin `Low Priority`, sin `Spot` y sin `Cloud Services`. Tomar la primera fila, o la más barata, da un número plausible y equivocado: la más barata es 0,0198 (Low Priority) contra 0,0992 de la real. Mismo cuidado con `isPrimaryMeterRegion`.
+- **Los discos no tienen un precio único: tienen bandas, y el tamaño decide.** `Standard SSD` va de `E1` a `E80`. Un disco de 32 GB es `E1 LRS` a **0,30/mes**; el 2,4/mes es `E4 LRS`, la banda de hasta 256 GiB. Cotizar "Standard SSD 32 GB" como un solo precio es como consultar la fuente equivocada (H16).
+- **El MCP de Azure no sirve para esto.** `pricing_get` con `service: "Virtual Machines Disks"` o `"Container Registry"` devuelve `items: []`, y exige `--sku` con nombres de SKU que no existen para discos ni registries. Para la tabla de costos hay que ir a `prices.azure.com` crudo:
+  ```bash
+  # precio de un medidor, filtrando por región y servicio
+  az rest --method get --url "https://prices.azure.com/api/retail/prices?currencyCode='USD'&`$filter=armRegionName%20eq%20'westus'%20and%20serviceName%20eq%20'Storage'%20and%20contains(meterName,'Standard%20SSD')"
+  ```
+  `serviceName` para discos y registry es `Storage` y `Container Registry`. Para IP pública es `Virtual Network`. Con `productName` el MCP **rechaza** el argumento: no existe.
+- **Un recurso que existe factura mientras existe, no mientras corre.** La IP pública estática y el disco se cobran aunque la VM esté apagada. Calcular el costo del demo con las horas de cómputo de la VM subestima esas dos líneas.
+
 ## Entorno del humano
 
 - El equipo trabaja en Windows. Los bloques bash del plan se corren en Git Bash, WSL o Azure Cloud Shell; si el agente propone un comando para PowerShell, lo traduce (variables, continuación de línea con acento grave, comillas).
