@@ -1,0 +1,4 @@
+# El gold standard se verifica por SHA-256 contra README_gold_v1.md, asi que el
+# corpus debe tener LF en el working tree: con CRLF el checksum no coincide en
+# Windows y validar_corpus falla el job. Regla acotada al corpus, no global.
+eval-prompt/corpus/**/*.jsonl text eol=lf
