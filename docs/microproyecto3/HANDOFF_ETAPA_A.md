@@ -112,7 +112,7 @@ Cosas que no se ven leyendo el código y que cuestan una hora si se redescubren:
 Las diez tareas de la Etapa B están en `PROGRESO.md` §4. El orden y lo que bloquea qué:
 
 1. **B1 — regiones, cuota y proveedores.** Solo lectura, no pide confirmación. **Es lo siguiente.**
-2. **B2 — grupo de recursos y los cinco proveedores.** Pide confirmación.
+2. **B2 — grupo de recursos y los tres proveedores que B1 encontró en `NotRegistered`.** Pide confirmación. `Microsoft.Insights` y `Microsoft.Storage` ya estaban `Registered` y no se tocan.
 3. **B4 — workspace `mlw-sirena`.** Pide confirmación. Anotar el `mlflow_tracking_uri` en `PROGRESO.md`.
 4. **B7 + B10 — clúster `cpu-sirena` y su rol.** **B10 es el que desbloquea el job `registrar`**:
    sin `AzureML Data Scientist` sobre el workspace, falla con `Forbidden` al escribir aunque

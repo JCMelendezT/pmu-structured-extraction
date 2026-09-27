@@ -236,8 +236,8 @@ La cuota de vCPU es **por suscripción y familia, no por región**: las cinco re
 
 ### B2. Registrar proveedores y crear el grupo de recursos
 
-- **Toca:** `Microsoft.MachineLearningServices`, `Microsoft.ContainerRegistry`, `Microsoft.KeyVault`, `Microsoft.Insights`, `Microsoft.Storage`; `az group create --name rg-sirena-mp3`.
-- **Criterio de aceptación:** el grupo responde `Succeeded`; los cinco proveedores quedan en `Registered`.
+- **Toca:** `Microsoft.MachineLearningServices`, `Microsoft.ContainerRegistry`, `Microsoft.KeyVault`; `az group create --name rg-sirena-mp3 --location westus`. **Solo los tres que B1 encontró en `NotRegistered`:** `Microsoft.Insights` y `Microsoft.Storage` ya estaban `Registered` y no se tocan. El ticket decía cinco y era lo mismo que H14: afirmar algo que la medición ya había corregido.
+- **Criterio de aceptación:** el grupo responde `Succeeded` en `westus`; los tres proveedores quedan en `Registered`, y `Microsoft.Insights` y `Microsoft.Storage` siguen en `Registered` sin haber sido tocados.
 - **Confirmación humana:** **sí**. Mostrar comando exacto, recurso tocado y costo (cero, pero crea recursos).
 
 ### B3. Rol `Contributor` del compañero, acotado al grupo
