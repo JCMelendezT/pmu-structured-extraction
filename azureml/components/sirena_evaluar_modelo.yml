@@ -1,0 +1,55 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: sirena_evaluar_modelo
+display_name: Evaluar modelo SIRENA
+version: 1
+type: command
+
+description: >-
+  Corre el harness de evaluacion contra el corpus gold y deja metricas.json,
+  informe.md y las metricas en MLflow. La clave de Groq la resuelve el propio
+  proceso: no viaja por el comando.
+
+inputs:
+  corpus:
+    type: uri_folder
+  modelo:
+    type: string
+    default: openai/gpt-oss-20b
+  limite:
+    type: integer
+    default: 340
+  autor:
+    type: string
+    default: sirena
+  rama:
+    type: string
+    default: ""
+  key_vault_url:
+    type: string
+
+outputs:
+  resultados:
+    type: uri_folder
+
+code: ../..
+environment: azureml:sirena-eval@latest
+
+environment_variables:
+  # La clave no se resuelve con ${{keyvault:...}}: esa sintaxis solo existe para
+  # online endpoints y deployments, no para command ni pipeline jobs. La lee
+  # evaluar.py con SecretClient + DefaultAzureCredential, y escribe el
+  # resultado en os.environ sin imprimirlo. Un `export GROQ_API_KEY=$(...)`
+  # en cambio dejaria la clave en el log del job, que se conserva y ve
+  # cualquiera con acceso al workspace.
+  KEY_VAULT_URL: ${{inputs.key_vault_url}}
+  AZURE_TOKEN_CREDENTIALS: ManagedIdentityCredential
+  INFERENCE_MODELO: ${{inputs.modelo}}
+
+command: >-
+  export PYTHONPATH=backend/inference:common/sirena-schema &&
+  python azureml/src/evaluar.py
+  --corpus ${{inputs.corpus}}/gold_v1/eval.jsonl
+  --limite ${{inputs.limite}}
+  --salida ${{outputs.resultados}}
+  --autor ${{inputs.autor}}
+  --rama ${{inputs.rama}}

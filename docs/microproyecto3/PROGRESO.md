@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6 y A7 hechos; A3 revertido y absorbido en A5; A8 pendiente.
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6, A7 y A8 hechos; A3 revertido y absorbido en A5; A9 pendiente. **Con A8 la Etapa A queda cerrada salvo A9**, y A9 es código, no Azure.
 
 ---
 
@@ -44,7 +44,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **7 hechos, 2 pendientes**. No toca Azure, no gasta crédito.
+Estado: **8 hechos, 1 pendiente**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -144,6 +144,24 @@ Estado: **7 hechos, 2 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/components/sirena_validar_corpus.yml`, `sirena_evaluar_modelo.yml`, `sirena_comparar_modelos.yml`, `sirena_registrar_configuracion.yml`, `azureml/pipeline.yml`.
 - **Criterio de aceptación:** cada input y output del `pipeline.yml` existe con el mismo nombre y tipo en el componente que lo consume; los YAML validan contra el esquema de Azure ML; los defaults coinciden con los del plan.
 - **Confirmación humana:** no.
+- **Estado:** **hecho**. Los cuatro componentes y el pipeline, más `tests/azureml/test_componentes_pipeline.py` con 46 pruebas.
+- **Las 46 pruebas atacan la parte que Azure ML no valida antes de crear el job.** Un input que el componente no declara, o un `${{parent.jobs.X.outputs.Y}}` mal escrito, no falla en la suite: falla en Azure, con el job a medio crear y un mensaje que no señala el YAML. Las pruebas resuelven las referencias para comparar el tipo del cable contra el tipo de la salida que se cita, no el texto de la referencia.
+- **El output de `comparar` es `uri_folder`, no `uri_file`, y el nombre engaña.** `comparar.py` recibe `--salida` como **carpeta**: hace `mkdir` y escribe `decision.json` adentro. Si el output fuera `uri_file`, Azure subiría una carpeta como si fuera un archivo. Se verificó en el código, no se asumió por el nombre del output.
+- **`autor` y `rama` se expusieron como inputs del pipeline.** El script ya los tenía con default (`sirena` y `""`), pero si el pipeline no los expusiera toda corrida quedaría con `autor=sirena` y `rama=""`, y los tags no distinguirían las corridas de los dos. Ahora son inputs del pipeline con default, y la corrida corta se puede atribuir con `--set inputs.autor=...`. Los defaults salen del propio `evaluar.py`, no de un literal repetido.
+- **`validar_corpus.py` y `comparar.py` no exportan `PYTHONPATH`:** solo usan la biblioteca estándar y no importan el workspace. `evaluar.py` sí lo necesita, porque importa `inference` y `sirena_schema`.
+- **Los archivos se llaman `sirena_*.yml` y el `name:` interno no repite el prefijo** (`sirena_validar_corpus.yml` declara `name: sirena_validar_corpus`). Hay una prueba que lo verifica. El plan L394 los nombraba `validar_corpus.yml`, `evaluar_modelo.yml`, etc.; se siguió el ticket A8, que es más específico, y el `component:` de cada job apunta a los nombres reales.
+- **El corpus entra como Data asset, no como código:** el input `gold` declara `default: azureml:gold_v1@latest`, que es la forma correcta en un pipeline job. Por eso `eval-prompt/corpus` sí se puede excluir del `.amlignore`.
+- **No se validó contra el esquema JSON de Azure ML.** Se validó coherencia interna, que es lo que esta disponible sin red. La validación real ocurre en `az ml job create`, en la Fase 6.
+- **A9 quedó pendiente por este ticket:** el cuarto componente apunta a `azureml/src/registrar.py`, que todavía no existe.
+
+### A9. Script de registro de la configuración ganadora
+
+- **Objetivo:** que el job `registrar` tenga el script que el plan pide, para que el grafo no se rompa en el último paso.
+- **Toca:** `azureml/src/registrar.py` y sus pruebas.
+- **Criterio de aceptación:** lee `decision.json`, registra `sirena-extractor` en el registro de modelos con la ontología y los hashes de prompts como artefactos, y los tags `modelo`, `f1_tipo_evento`, `latencia_p95_ms`, `prompt_hash` y `job_id`. Sale con codigo 0 si registró, 1 si no pudo decidir.
+- **Por que salio de A8:** el plan lo pide en la tabla de cambios al repositorio (L503, `azureml/components/registrar_config.yml` + `azureml/src/registrar.py`), pero el ticket A8 solo cubria los cinco YAML. Se dejo el componente escrito y apuntando al script en vez de inventar un stub: un stub que "funciona" y no registra nada daria un job en verde mintiendo, que es peor que un job en rojo diciendo la verdad.
+- **Riesgo propio:** `mlflow.pyfunc.log_model` necesita un `loader_module`, que el repo no tiene. Es la parte con mas probabilidad de fallar en la primera corrida real, asi que conviene probarlo contra un workspace temprano y no al final de la Fase 6.
+- **Confirmación humana:** no para escribirlo. **Sí** para ejecutarlo contra el workspace de Azure.
 
 ## 4. Etapa B — Azure, fases 0 a 4
 
@@ -349,3 +367,4 @@ Se responden en la etapa que las necesita, no antes.
 | 6 | 2026-09-27 | A5 hecho: `evaluar.py` y `comparar.py`. La clave se resuelve adentro del proceso y no se imprime; el desempate por costo quedó anclado a `gpt-oss-20b` con umbral estricto de 0,02. **Suite: 371 pasan, 1 xfail**. Se apartó del plan a propósito: `metricas.json` lleva `"modelo"` porque el job que compara no recibe el modelo por input |
 | 7 | 2026-09-27 | A6 hecho: `INFERENCE_MODELO` con default `openai/gpt-oss-20b` en el servicio `inference` del Compose. El default sale de `MODELO_POR_DEFECTO` de `registro.py`, no de un literal repetido. Sin Docker local: el `docker compose` de esta máquina no tiene plugin, y la imagen de la VM es de Azure, no nuestra |
 | 8 | 2026-09-27 | A7 hecho: `requirements.txt` generado con `uv export -o` (316 líneas) en vez de la redirección `>` del plan, más `Dockerfile`, `environment.yml` y `.amlignore` en la raíz. **Ojo con `config/`**: `sirena_schema.ontologia` lo resuelve por ruta relativa al CWD, así que excluirlo del `.amlignore` rompe el job al importar. La imagen no se construyó: eso es Fase 3 |
+| 9 | 2026-09-27 | A8 hecho: los cuatro componentes y `pipeline.yml`, con 46 pruebas de coherencia entre cables, nombres y tipos. **El output de `comparar` es `uri_folder` y no `uri_file`**, porque `comparar.py` recibe `--salida` como carpeta y escribe `decision.json` adentro; se verificó en el código, no se asumió por el nombre. `autor` y `rama` se exponieron como inputs del pipeline, que sin eso dejaban toda corrida con `autor=sirena`. Salió **A9**: falta `azureml/src/registrar.py`, que el plan pide y A8 no cubría |

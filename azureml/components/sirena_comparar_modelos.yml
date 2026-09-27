@@ -1,0 +1,34 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: sirena_comparar_modelos
+display_name: Comparar modelos SIRENA
+version: 1
+type: command
+
+description: >-
+  Aplica la regla de seleccion del plan sobre los dos metricas.json y deja
+  decision.json con el ganador, la razon y las metricas que lo decidirian.
+
+inputs:
+  resultados_a:
+    type: uri_folder
+  resultados_b:
+    type: uri_folder
+
+outputs:
+  decision:
+    type: uri_folder
+
+code: ../..
+environment: azureml:sirena-eval@latest
+
+# El output es uri_folder y no uri_file a proposito: comparar.py recibe
+# --salida como carpeta y escribe decision.json adentro (hace mkdir y luego
+# crea el archivo). Si el output fuera uri_file, Azure subiria una carpeta
+# como si fuera un archivo y el job registraria mal la salida.
+#
+# comparar.py solo lee JSON de la biblioteca estandar, no importa el workspace.
+command: >-
+  python azureml/src/comparar.py
+  --resultados-a ${{inputs.resultados_a}}
+  --resultados-b ${{inputs.resultados_b}}
+  --salida ${{outputs.decision}}

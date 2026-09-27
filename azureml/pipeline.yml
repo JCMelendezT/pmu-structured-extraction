@@ -1,0 +1,72 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+experiment_name: sirena-evaluacion
+display_name: sirena-eval
+
+description: >-
+  Valida el corpus versionado, evalua los dos modelos candidatos en paralelo,
+  elige uno con la regla del plan y registra la configuracion ganadora.
+
+settings:
+  default_compute: azureml:cpu-sirena
+
+inputs:
+  # El corpus entra como Data asset versionado, no como codigo: por eso
+  # eval-prompt/corpus esta excluido del .amlignore.
+  gold:
+    type: uri_folder
+    default: azureml:gold_v1@latest
+  limite:
+    type: integer
+    default: 340
+  autor:
+    type: string
+    default: sirena
+  rama:
+    type: string
+    default: ""
+  key_vault_url:
+    type: string
+
+jobs:
+  validar:
+    display_name: Validar corpus gold
+    component: ./components/sirena_validar_corpus.yml
+    inputs:
+      entrada: ${{parent.inputs.gold}}
+
+  evaluar_20b:
+    display_name: Evaluar gpt-oss-20b
+    component: ./components/sirena_evaluar_modelo.yml
+    inputs:
+      corpus: ${{parent.jobs.validar.outputs.corpus_validado}}
+      modelo: openai/gpt-oss-20b
+      limite: ${{parent.inputs.limite}}
+      autor: ${{parent.inputs.autor}}
+      rama: ${{parent.inputs.rama}}
+      key_vault_url: ${{parent.inputs.key_vault_url}}
+
+  evaluar_120b:
+    display_name: Evaluar gpt-oss-120b
+    component: ./components/sirena_evaluar_modelo.yml
+    inputs:
+      corpus: ${{parent.jobs.validar.outputs.corpus_validado}}
+      modelo: openai/gpt-oss-120b
+      limite: ${{parent.inputs.limite}}
+      autor: ${{parent.inputs.autor}}
+      rama: ${{parent.inputs.rama}}
+      key_vault_url: ${{parent.inputs.key_vault_url}}
+
+  comparar:
+    display_name: Comparar modelos
+    component: ./components/sirena_comparar_modelos.yml
+    inputs:
+      resultados_a: ${{parent.jobs.evaluar_20b.outputs.resultados}}
+      resultados_b: ${{parent.jobs.evaluar_120b.outputs.resultados}}
+
+  registrar:
+    display_name: Registrar configuracion ganadora
+    component: ./components/sirena_registrar_configuracion.yml
+    inputs:
+      decision: ${{parent.jobs.comparar.outputs.decision}}
+      key_vault_url: ${{parent.inputs.key_vault_url}}

@@ -1,0 +1,27 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: sirena_validar_corpus
+display_name: Validar corpus gold
+version: 1
+type: command
+
+description: >-
+  Verifica los checksums de dev.jsonl, eval.jsonl y gold_standard_v1.jsonl, y
+  deja una copia de eval.jsonl para que los jobs de evaluacion la lean.
+
+inputs:
+  entrada:
+    type: uri_folder
+
+outputs:
+  corpus_validado:
+    type: uri_folder
+
+code: ../..
+environment: azureml:sirena-eval@latest
+
+# validar_corpus.py no importa nada del workspace, solo la biblioteca
+# estandar, asi que aca no hace falta exportar PYTHONPATH.
+command: >-
+  python azureml/src/validar_corpus.py
+  --entrada ${{inputs.entrada}}
+  --salida ${{outputs.corpus_validado}}
