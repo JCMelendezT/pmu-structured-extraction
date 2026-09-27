@@ -365,17 +365,26 @@ inputs:
   corpus: {type: uri_folder}
   modelo: {type: string, default: openai/gpt-oss-20b}
   limite: {type: integer, default: 340}
+  key_vault_url: {type: string}
 outputs:
   resultados: {type: uri_folder}
 code: ../..
 environment: azureml:sirena-eval@latest
+environment_variables:
+  KEY_VAULT_URL: ${{inputs.key_vault_url}}
+  AZURE_TOKEN_CREDENTIALS: ManagedIdentityCredential
 command: >-
   export PYTHONPATH=backend/inference:common/sirena-schema &&
-  export GROQ_API_KEY=$(python azureml/src/leer_secreto.py groq-api-key) &&
   export INFERENCE_MODELO=${{inputs.modelo}} &&
-  python azureml/src/evaluar.py --corpus ${{inputs.corpus}}/eval.jsonl
+  python azureml/src/evaluar.py --corpus ${{inputs.corpus}}/gold_v1/eval.jsonl
   --limite ${{inputs.limite}} --salida ${{outputs.resultados}}
 ```
+
+La clave **no viaja por el comando**. `evaluar.py` la resuelve en el propio proceso: si `GROQ_API_KEY` ya está en el entorno (corrida local) la usa tal cual; si no, y hay `KEY_VAULT_URL`, lee el secreto `groq-api-key` del Key Vault con `SecretClient` + `DefaultAzureCredential` y lo escribe en `os.environ["GROQ_API_KEY"]` **sin imprimirlo**. Sin sustitución de shell, porque un `export GROQ_API_KEY=$(...)` deja la clave en el log del job, que se conserva y ve cualquiera con acceso al workspace.
+
+`AZURE_TOKEN_CREDENTIALS=ManagedIdentityCredential` fija la credencial de forma explícita, como recomienda la documentación para producción, en vez de dejar que `DefaultAzureCredential` resuelva por su cuenta.
+
+Las referencias `${{keyvault:...}}` **no** se usan: son solo para online endpoints y deployments, no para command ni pipeline jobs, y el Environment no admite variables de entorno con referencias a secretos.
 
 `azureml/pipeline.yml`:
 
@@ -489,8 +498,7 @@ Los cambios son aditivos: una carpeta `azureml/` nueva, dos ajustes pequeños en
 | `azureml/data/gold_v1.yml` | Nuevo | Define el Data asset del corpus |
 | `azureml/env/Dockerfile`, `environment.yml`, `requirements.txt` | Nuevo | Environment `sirena-eval` (requirements generado con `uv export`) |
 | `azureml/components/validar_corpus.yml` + `azureml/src/validar_corpus.py` | Nuevo | Recalcula SHA-256 de `eval.jsonl` y `dev.jsonl`, los compara con `README_gold_v1.md` y copia `eval.jsonl` a la salida |
-| `azureml/components/evaluar_modelo.yml` + `azureml/src/evaluar.py` | Nuevo | Envoltorio de `inference.evaluacion`: reutiliza `cargar_corpus`, `EvaluadorPrompts`, `metricas_por_campo`, `generar_informe` y `registrar_corrida`, y además escribe `metricas.json` (con `dataclasses.asdict`) en la salida |
-| `azureml/src/leer_secreto.py` | Nuevo | Lee un secreto del Key Vault del workspace con `DefaultAzureCredential` y lo imprime para exportarlo |
+| `azureml/components/evaluar_modelo.yml` + `azureml/src/evaluar.py` | Nuevo | Envoltorio de `inference.evaluacion`: reutiliza `cargar_corpus`, `EvaluadorPrompts`, `metricas_por_campo`, `generar_informe` y `registrar_corrida`, y además escribe `metricas.json` (con `dataclasses.asdict`) en la salida. Antes de construir el proveedor resuelve la clave: usa `GROQ_API_KEY` del entorno si está, y si no lee `groq-api-key` del Key Vault con `SecretClient` + `DefaultAzureCredential` y la escribe en `os.environ` sin imprimirla |
 | `azureml/components/comparar_modelos.yml` + `azureml/src/comparar.py` | Nuevo | Lee los dos `metricas.json`, aplica la regla de selección y escribe `decision.json` |
 | `azureml/components/registrar_config.yml` + `azureml/src/registrar.py` | Nuevo | Registra `sirena-extractor` con `mlflow.pyfunc.log_model` (artefactos: ontología, `decision.json`, hashes de prompts) y le pone tags `modelo`, `f1_tipo_evento`, `latencia_p95_ms`, `prompt_hash` |
 | `azureml/pipeline.yml`, `azureml/.amlignore` | Nuevo | Pipeline y exclusiones de subida |
@@ -568,7 +576,7 @@ El riesgo más probable es de capacidad o cuota en Azure, no de código; por eso
 | Región bloqueada por política | `RequestDisallowedByPolicy` | Volver a la lista de regiones permitidas de la guía del curso |
 | `azureml-mlflow` incompatible con mlflow 3.x | Error al construir el Environment o al registrar métricas | Fijar la versión de mlflow compatible solo en `azureml/env/requirements.txt`, sin tocar el lock del repo |
 | MLflow rechaza `set_experiment` dentro del job | Error de experimento o de run activo en `evaluar_modelo` | `experiment_name: sirena-evaluacion` en el pipeline (ya incluido) y, si persiste, el ajuste en `registro.py` |
-| La identidad del clúster no lee el Key Vault | `Forbidden` en `leer_secreto.py` | Revisar si el Key Vault usa políticas de acceso o RBAC; en último caso, variable de entorno al lanzar el job y rotar la clave |
+| La identidad del clúster no lee el Key Vault | `Forbidden` en la llamada de `evaluar.py` al `SecretClient` | Revisar si el Key Vault usa políticas de acceso o RBAC; en último caso, variable de entorno al lanzar el job y rotar la clave |
 | Límites de Groq (429) o caída del servicio | Corridas lentas o fallidas | El proveedor ya reintenta con backoff; bajar `limite`; correr las dos evaluaciones en serie; tener resultados de la noche anterior |
 | Sin acceso a gpt-oss-120b con la clave | `model_not_found` | Comparar contra `qwen/qwen3.8-27b` u otro modelo del catálogo de `docs/CONFIG_PROVEEDORES.md` |
 | VM sin RAM al construir 7 imágenes | Build lento o contenedores reiniciando | Construir en serie (`docker compose build --parallel 1`) o subir temporalmente a `Standard_B2ms` |

@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0 a A3 hechos; A4 a A8 pendientes.
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1 y A2 hechos; A3 a A8 pendientes. A3 se revirtió y su carga de trabajo se absorbió en A5 (ver H13).
 
 ---
 
@@ -22,6 +22,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 | H4 | `docker-compose.yml` no propaga `INFERENCE_MODELO` al servicio `inference`, así que la VM no podría fijar el modelo ganador por variable de entorno | `docker-compose.yml:52-60` | **Pendiente.** Ticket A6 |
 | H5 | El plan afirma que "agregar otro proveedor no toca el resto del código", y eso no aplica al harness de evaluación: `evaluacion.main()` construye `ServicioInferencia(ProveedorGroq())` de forma directa | `backend/inference/inference/evaluacion.py:812` | **Resuelto.** Aclarado en el plan: aplica al servicio Inference, no al harness. `evaluar.py` construye su propio servicio y `evaluacion.py` no se toca (D7) |
 | H6 | El `.amlignore` está especificado en `azureml/`, pero el contexto que se sube con `code: ../..` es el repo raíz, así que ahí no tendría efecto | Fase 5 del plan, campo `code: ../..` | **Pendiente.** Ticket A7: el `.amlignore` va en la raíz |
+| H13 | Las referencias `${{keyvault:...}}` del plan asumían que el Environment podía inyectar secretos a los jobs. **No es así:** solo existen para online endpoints y deployments. Para command y pipeline jobs la vía documentada es `SecretClient` + `DefaultAzureCredential` con la identidad administrada del compute | `how-to-deploy-online-endpoint-with-secret-injection` vs `how-to-use-secrets-in-runs`; plan L318, L348, L374 | **Resuelto.** A3 revertido; la lectura del secreto se hace en `evaluar.py` (A5) y se quita el `export` del comando del componente |
 | H7 | `AGENTS.md` describe el LLM como "Llama 3.1 8B Instruct", pero el código y `.env.example` usan `openai/gpt-oss-20b` | `AGENTS.md` vs `backend/inference/inference/proveedor.py:83` | **Abierto.** No se corrigió en silencio. Propuesta: una línea de corrección. Requiere visto bueno del equipo |
 | H8 | La Fase 7 del plan clona el upstream, lo que descartaría los componentes de `azureml/` que viven en el fork | Fase 7 del plan, paso de clonado | **Pendiente.** El ticket D2 clona el fork y la rama `feature/azureml-pipeline` |
 | H9 | El profesor aceptó que el LLM se sirva desde Groq mientras la evaluación, la comparación, el registro y el despliegue vivan en Azure ML | Respuesta del profesor, 2026-09-26 | **Resuelto.** D5. La pregunta abierta quedó marcada en el plan |
@@ -43,7 +44,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
+Estado: **3 hechos, 6 pendientes**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -85,8 +86,12 @@ Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/src/leer_secreto.py`, `tests/azureml/test_leer_secreto.py`.
 - **Criterio de aceptación:** devuelve la clave sin imprimirla; los asserts verifican que la clave nunca aparezca en los logs ni en la salida de los tests; falla con error explícito si no encuentra la variable ni el secreto.
 - **Confirmación humana:** no.
-- **Estado:** **hecho** (5 pruebas). Lee la clave por nombre de variable, trata `""` como ausente, y **no registra ni imprime nada**: hay un test con `caplog` que falla si alguien agrega un log con la clave, y otro que verifica que no tome el valor de otra variable del entorno. El error dice cómo cablearla.
-- **Desviación registrada — el plan quedó obsoleto en este punto.** El plan (L491) pedía "leer el secreto del Key Vault con `DefaultAzureCredential` e imprimirlo para exportarlo". Imprimir un secreto lo mete al log del job, que se conserva y ve cualquiera con acceso al workspace, y obligaría a agregar `azure-identity` + `azure-keyvault-secrets` (hoy no hay **ningún** Azure SDK en el repo) al paquete `inference`, que es el que se hornea en la imagen Docker. La lectura desde Key Vault la hace la **identidad administrada del job** de forma nativa, con la referencia de Key Vault en el Environment `sirena-eval` (A7); Python solo lee `os.environ`. Resultado: cero dependencias nuevas y el secreto nunca toca un log. Si igual se quiere el cliente de Azure en Python, es un `uv add` y unas 20 líneas más.
+- **Estado: revertido. La desviación que se escribió estaba mal, y el error fue de verificación, no de diseño.** Se implementó `leer_secreto.py` leyendo solo `os.environ`, con la premisa de que "la identidad administrada del job ya resuelve el secreto de forma nativa con la referencia de Key Vault del Environment". **Esa premisa es falsa** y no se verificó antes de construir encima:
+  - Las referencias `${{keyvault:...}}` son solo para **online endpoints** y deployments (`how-to-deploy-online-endpoint-with-secret-injection`). No aplican a command jobs ni a pipeline jobs, y el Environment **no** admite variables de entorno con referencias a secretos.
+  - Para jobs, lo documentado es `DefaultAzureCredential` + `azure-keyvault-secrets` con la identidad administrada del compute (`how-to-use-secrets-in-runs`). Es justo lo que ya prepara la Fase 4 con `az keyvault set-policy --secret-permissions get` (plan L348).
+  - La segunda justificación ("evita sumar dos Azure SDK") también era falsa: el Dockerfile del Environment ya los instala en la **imagen de los jobs** (plan L318), no en el paquete `inference`. Cero impacto en las imágenes de los microservicios y cero `uv add`.
+- **Cómo queda:** la lectura del secreto se hace dentro de `evaluar.py`, antes de construir el proveedor (se resuelve en **A5**), con `SecretClient` + `DefaultAzureCredential`, escribiendo en `os.environ["GROQ_API_KEY"]` **sin imprimirla y sin sustitución de shell**. Si `GROQ_API_KEY` ya está, no se toca el Key Vault. El componente fija `AZURE_TOKEN_CREDENTIALS=ManagedIdentityCredential` y recibe `KEY_VAULT_URL` como input. Se elimina `leer_secreto.py` del comando del componente (plan L374). A3 deja de ser un ticket con código propio y se reabre como parte de A5.
+- **Lo que sí queda en pie:** la preocupación por no imprimir el secreto en el log del job era válida y se conserva — de hecho, el `export GROQ_API_KEY=$(...)` que se quita del comando era exactamente esa fuga. El error fue cambiar el mecanismo correcto (client de Key Vault) por uno inexistente, en lugar de quitarle el `print` al correcto.
 
 ### A4. Proteger `registro.py` cuando la corrida ya existe
 
@@ -115,6 +120,7 @@ Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/env/Dockerfile`, `azureml/env/requirements.txt`, `.amlignore` **en la raíz del repo** (ver H6).
 - **Criterio de aceptación:** `requirements.txt` se genera con `uv export --package inference --no-dev --no-hashes --no-emit-workspace`; la imagen instala sin errores; el `.amlignore` excluye `.git`, `data/`, `frontend/`, `*.db` y los `.env`.
 - **Confirmación humana:** no.
+- **Alcance corregido tras revertir A3.** Este ticket se había apoypado en "la referencia de Key Vault en el Environment `sirena-eval`", que es la premisa falsa que tumbó A3. **A7 no configura ningún secreto**: el Environment solo lleva `azure-identity` y `azure-keyvault-secrets` en la imagen (plan L318) para que el job pueda leer del Key Vault por código. La referencia de Key Vault como mecanismo nativo no existe para command jobs. El estado del secreto se verifica en el ticket B4 (Fase 4) y se confirma en la corrida corta de la Fase 6.
 
 ### A8. YAML de componentes y del pipeline
 
@@ -169,6 +175,7 @@ Estado: **9 pendientes**. Todos los comandos de creación pasan por la puerta de
 
 - **Toca:** `cpu-sirena`, `Standard_DS2_v2`, `min-instances 0`, `max-instances 2` (tope duro en las reglas), identidad administrada y permiso de lectura del secreto.
 - **Criterio de aceptación:** el clúster queda `Succeeded`; `max-instances` es 2; la identidad puede leer el secreto de Key Vault.
+- **Cómo se comprueba el acceso al secreto, y cuándo.** En la **Fase 4 (este ticket)** solo se puede verificar que el permiso quedó **otorgado**: que `az keyvault set-policy --secret-permissions get` corrió, o que la asignación RBAC `Key Vault Secrets User` existe con el principal de la identidad del clúster. Eso **no prueba** que la lectura funcione. La prueba real es una lectura efectiva, y llega en la **corrida corta de la Fase 6**: el job de evaluación usa el secreto para llamar a Groq, así que si la identidad no puede leer, el job falla con `Forbidden` en la llamada al Key Vault. Si aparece, se revisa si el vault usa políticas de acceso o RBAC, y el plan B es pasar la clave por variable de entorno al lanzar el job y rotarla después de la sustentación.
 - **Confirmación humana:** **sí**.
 
 ### B8. Key Vault y el secreto de Groq
@@ -321,4 +328,4 @@ Se responden en la etapa que las necesita, no antes.
 | 1 | 2026-09-27 | Fork y rama creados, CRLF del corpus corregido (A1), plan contrastado con el código, 12 hallazgos y 7 decisiones registradas, Etapas A a F partidas en 36 tickets |
 | 2 | 2026-09-27 | Ticket A0 autorizado y cerrado en dos commits: `d10056b` formatea 4 archivos (AST idéntico verificado) y se instala `es_core_news_md`, que faltaba solo en esta máquina. **Línea base en verde: 338 pasan, 1 xfail.** Las 11 pruebas rojas no eran del repo |
 | 3 | 2026-09-27 | A2 hecho: `validar_corpus` con los tres checksums del README y salida `gold_v1/eval.jsonl` + `manifest.json`. Los conteos reales son 60/340/400, y el total del corpus es 400, no la suma de los tres archivos. **Suite: 346 pasan, 1 xfail** |
-| 4 | 2026-09-27 | A3 hecho: `leer_secreto` lee la clave de la variable de entorno sin imprimirla ni registrarla. Se **descartó** el cliente de Key Vault en Python del plan (L491): lo hace la identidad administrada del job, y evita sumar dos Azure SDK al paquete que se hornea. **Suite: 351 pasan, 1 xfail** |
+| 4 | 2026-09-27 | **A3 revertido** por decisión del equipo, con evidencia de la doc oficial: las referencias `${{keyvault:...}}` no existen para command ni pipeline jobs, solo para online endpoints; y el Dockerfile del Environment ya instalaba los dos Azure SDK (plan L318), así que el argumento de "evitar dependencias" era falso. Hallazgo nuevo **H13**. La lectura del secreto pasa a `evaluar.py` con `SecretClient` + `DefaultAzureCredential`, sin imprimir y sin sustitución de shell. A7 y B7 reescritos: A7 no configura secretos, y la lectura efectiva se prueba en la corrida corta de la Fase 6 |
