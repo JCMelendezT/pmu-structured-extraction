@@ -34,16 +34,11 @@ outputs:
 code: ../..
 environment: azureml:sirena-eval@latest
 
-environment_variables:
-  # La clave no se resuelve con ${{keyvault:...}}: esa sintaxis solo existe para
-  # online endpoints y deployments, no para command ni pipeline jobs. La lee
-  # evaluar.py con SecretClient + DefaultAzureCredential, y escribe el
-  # resultado en os.environ sin imprimirlo. Un `export GROQ_API_KEY=$(...)`
-  # en cambio dejaria la clave en el log del job, que se conserva y ve
-  # cualquiera con acceso al workspace.
-  KEY_VAULT_URL: ${{inputs.key_vault_url}}
-  AZURE_TOKEN_CREDENTIALS: ManagedIdentityCredential
-  INFERENCE_MODELO: ${{inputs.modelo}}
+# environment_variables se movio a pipeline.yml (nivel de job). El esquema de
+# command component no tiene clave environment_variables: Azure la descarta en
+# silencio al registrar. Sin KEY_VAULT_URL el job no sabe donde esta el Key
+# Vault y falla con "No hay clave de Groq". Sin INFERENCE_MODELO ambos pasos
+# evaluarian el 20b y la comparacion saldria sin sentido. Ver pipeline.yml.
 
 command: >-
   export PYTHONPATH=backend/inference:common/sirena-schema &&

@@ -16,7 +16,7 @@ inputs:
   gold:
     path: azureml:gold_v1@latest
     mode: download
-  limite: 340
+  limite: 5
   autor: sirena
   rama: sirena
   key_vault_url: https://mlwsirenkeyvault18607254.vault.azure.net
@@ -36,6 +36,11 @@ jobs:
   evaluar_20b:
     display_name: Evaluar gpt-oss-20b
     component: ./components/sirena_evaluar_modelo.yml
+    identity:
+      type: managed
+    environment_variables:
+      KEY_VAULT_URL: https://mlwsirenkeyvault18607254.vault.azure.net
+      INFERENCE_MODELO: openai/gpt-oss-20b
     inputs:
       corpus: ${{parent.jobs.validar.outputs.corpus_validado}}
       modelo: openai/gpt-oss-20b
@@ -47,6 +52,11 @@ jobs:
   evaluar_120b:
     display_name: Evaluar gpt-oss-120b
     component: ./components/sirena_evaluar_modelo.yml
+    identity:
+      type: managed
+    environment_variables:
+      KEY_VAULT_URL: https://mlwsirenkeyvault18607254.vault.azure.net
+      INFERENCE_MODELO: openai/gpt-oss-120b
     inputs:
       corpus: ${{parent.jobs.validar.outputs.corpus_validado}}
       modelo: openai/gpt-oss-120b
