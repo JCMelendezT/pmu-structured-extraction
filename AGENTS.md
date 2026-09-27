@@ -4,7 +4,7 @@ Lineamientos para cualquier persona o agente de código (Claude Code, OpenCode, 
 
 ## Contexto del proyecto
 
-**SIRENA** — extracción estructurada de reportes ciudadanos de emergencia (Santiago de Cali) mediante un LLM de pesos abiertos (Llama 3.1 8B Instruct vía Groq), con validación de esquema y normalización geográfica determinista. Ver la propuesta completa en [`docs/propuesta/propuesta-final-sirena.md`](docs/propuesta/propuesta-final-sirena.md).
+**SIRENA** — extracción estructurada de reportes ciudadanos de emergencia (Santiago de Cali) mediante un LLM de pesos abiertos (`openai/gpt-oss-20b` vía Groq), con validación de esquema y normalización geográfica determinista. Ver la propuesta completa en [`docs/propuesta/propuesta-final-sirena.md`](docs/propuesta/propuesta-final-sirena.md).
 
 Los principios de producto y las exclusiones de alcance (qué no calcula ni decide el sistema, límites éticos, restricciones de despliegue) están en [`.specify/memory/constitution.md`](.specify/memory/constitution.md) — ese archivo es el que valida `/speckit-plan` y `/speckit-analyze`; este `AGENTS.md` cubre solo convenciones operativas del día a día.
 
@@ -61,7 +61,7 @@ Como el modelo es preentrenado (no hay fine-tuning), cada corrida de MLflow regi
 - **Parámetros**: repositorio + revisión del modelo en Groq/HF Hub, versión del corpus, umbral de la compuerta (etapa 1), configuración de prompts.
 - **Métricas**: precisión exacta y F1 por campo del esquema, latencia media/p95.
 - **Artefactos**: informe de evaluación, ejemplos de predicción.
-- **Tags**: licencia Llama 3.1 Community License, equipo/autor, ambiente (dev/prod), PR asociado.
+- **Tags**: licencia del modelo realmente usado —`MIT` para `gpt-oss-20b`, que es lo que registra `registro.py` con `LICENCIA = "MIT"`—, equipo/autor, ambiente (dev/prod), PR asociado.
 
 `mlflow server` + variable `MLFLOW_TRACKING_URI` compartida por el equipo (mismo flujo del laboratorio de Clase 7).
 
