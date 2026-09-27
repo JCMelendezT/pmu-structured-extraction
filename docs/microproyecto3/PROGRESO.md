@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A iniciada.** Línea base en verde desde `d10056b`. Tickets A0 y A1 hechos; A2 a A8 pendientes.
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1 y A2 hechos; A3 a A8 pendientes.
 
 ---
 
@@ -43,7 +43,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **2 hechos, 7 pendientes**. No toca Azure, no gasta crédito.
+Estado: **3 hechos, 6 pendientes**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -76,6 +76,8 @@ Estado: **2 hechos, 7 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/src/validar_corpus.py`, `tests/azureml/test_validar_corpus.py`.
 - **Criterio de aceptación:** falla con mensaje claro si un checksum no coincide; escribe `<salida>/gold_v1/eval.jsonl`; `manifest.json` lista los cinco archivos del corpus, con checksum en tres y sin checksum en los otros dos.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (8 pruebas, patrón AAA). Los tres checksums del README coinciden contra el corpus real en esta máquina: `dev=60`, `eval=340`, `gold_standard_v1=400`. Verificado en las dos direcciones: copia `eval.jsonl` byte a byte idéntica, y con una línea inyectada en `dev.jsonl` el script falla nombrando el archivo y **no deja manifiesto a medias**.
+- **Desviación registrada:** el plan (L491) nombra solo `eval.jsonl` y `dev.jsonl`; el README congela tres checksums, así que se validan los tres (D1) y los otros dos archivos del corpus aparecen en el manifiesto sin checksum. El plan no se editó: la diferencia queda anotada acá.
 
 ### A3. `leer_secreto` para la clave de Groq
 
@@ -316,3 +318,4 @@ Se responden en la etapa que las necesita, no antes.
 | --- | --- | --- |
 | 1 | 2026-09-27 | Fork y rama creados, CRLF del corpus corregido (A1), plan contrastado con el código, 12 hallazgos y 7 decisiones registradas, Etapas A a F partidas en 36 tickets |
 | 2 | 2026-09-27 | Ticket A0 autorizado y cerrado en dos commits: `d10056b` formatea 4 archivos (AST idéntico verificado) y se instala `es_core_news_md`, que faltaba solo en esta máquina. **Línea base en verde: 338 pasan, 1 xfail.** Las 11 pruebas rojas no eran del repo |
+| 3 | 2026-09-27 | A2 hecho: `validar_corpus` con los tres checksums del README y salida `gold_v1/eval.jsonl` + `manifest.json`. Los conteos reales son 60/340/400, y el total del corpus es 400, no la suma de los tres archivos. **Suite: 346 pasan, 1 xfail** |
