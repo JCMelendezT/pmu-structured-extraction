@@ -5,8 +5,12 @@ entrenamiento): parametros del modelo y del corpus, metricas por campo,
 latencia y errores, artefactos del informe y las matrices de confusion, y
 tags del contexto de la corrida.
 
-El registro se habilita al definir la variable MLFLOW_TRACKING_URI; si no
-esta definida, la corrida se ejecuta igual pero sin registrarse.
+    El registro se habilita al definir la variable MLFLOW_TRACKING_URI; si no
+    esta definida, la corrida se ejecuta igual pero sin registrarse.
+
+    Dentro de un job de Azure ML la corrida ya la abrio el pipeline padre y
+    MLFLOW_RUN_ID la apunta. En ese caso no se cambia el experimento, porque
+    MLflow ya tiene la corrida activa y cambiarla a mitad de camino falla.
 """
 
 from __future__ import annotations
@@ -82,7 +86,8 @@ def registrar_corrida(
         _LOGGER.warning("MLFLOW_TRACKING_URI sin definir; la corrida no se registra en MLflow")
         return None
     mlflow.set_tracking_uri(uri)
-    mlflow.set_experiment(EXPERIMENTO)
+    if not os.environ.get("MLFLOW_RUN_ID"):
+        mlflow.set_experiment(EXPERIMENTO)
     with mlflow.start_run() as run:
         _registrar_parametros(corpus)
         _registrar_metricas(metricas)

@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1 y A2 hechos; A3 a A8 pendientes. A3 se revirtió y su carga de trabajo se absorbió en A5 (ver H13).
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2 y A4 hechos; A3 revertido y absorbido en A5; A5 a A8 pendientes.
 
 ---
 
@@ -44,7 +44,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **3 hechos, 6 pendientes**. No toca Azure, no gasta crédito.
+Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -99,6 +99,8 @@ Estado: **3 hechos, 6 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `backend/inference/inference/registro.py` (excepción acotada, ver `REGLAS_AGENTE.md`), `tests/azureml/test_registro_run_id.py`.
 - **Criterio de aceptación:** con `MLFLOW_RUN_ID` presente, no se llama `set_experiment`; sin la variable, el comportamiento actual se mantiene; la suite en verde.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (6 pruebas, sobre un backend MLflow SQLite real, sin mocks). El arreglo es de **una línea**: `registro.py` ya no llama `set_experiment` cuando existe `MLFLOW_RUN_ID`. Resuelto H2.
+- **Hallazgo al implementarlo:** `mlflow.start_run()` **ya respeta `MLFLOW_RUN_ID` por su cuenta** y retoma la corrida existente. Tres de las cuatro pruebas pasaron sin tocar el código: la corrida del padre se reutilizaba igual. Lo único que estaba realmente roto era el `set_experiment` incondicional, que es exactamente lo que rompe cuando hay una corrida activa. El cambio es más chico de lo que suponía el ticket.
 
 ### A5. `evaluar.py` y `comparar.py`
 
@@ -329,3 +331,4 @@ Se responden en la etapa que las necesita, no antes.
 | 2 | 2026-09-27 | Ticket A0 autorizado y cerrado en dos commits: `d10056b` formatea 4 archivos (AST idéntico verificado) y se instala `es_core_news_md`, que faltaba solo en esta máquina. **Línea base en verde: 338 pasan, 1 xfail.** Las 11 pruebas rojas no eran del repo |
 | 3 | 2026-09-27 | A2 hecho: `validar_corpus` con los tres checksums del README y salida `gold_v1/eval.jsonl` + `manifest.json`. Los conteos reales son 60/340/400, y el total del corpus es 400, no la suma de los tres archivos. **Suite: 346 pasan, 1 xfail** |
 | 4 | 2026-09-27 | **A3 revertido** por decisión del equipo, con evidencia de la doc oficial: las referencias `${{keyvault:...}}` no existen para command ni pipeline jobs, solo para online endpoints; y el Dockerfile del Environment ya instalaba los dos Azure SDK (plan L318), así que el argumento de "evitar dependencias" era falso. Hallazgo nuevo **H13**. La lectura del secreto pasa a `evaluar.py` con `SecretClient` + `DefaultAzureCredential`, sin imprimir y sin sustitución de shell. A7 y B7 reescritos: A7 no configura secretos, y la lectura efectiva se prueba en la corrida corta de la Fase 6 |
+| 5 | 2026-09-27 | A4 hecho: `registro.py` ya no cambia de experimento cuando existe `MLFLOW_RUN_ID`. El arreglo fue **una línea**: `mlflow.start_run()` ya retoma la corrida del padre por su cuenta, así que lo único roto era el `set_experiment` incondicional. **Suite: 352 pasan, 1 xfail** |
