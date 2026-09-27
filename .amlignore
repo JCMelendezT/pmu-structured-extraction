@@ -1,0 +1,38 @@
+# Contexto de subida de los jobs de Azure ML.
+# El codigo se sube desde la raiz del repo (los componentes usan code: ../..),
+# asi que sin esto cada job arrastraria el historial de git, la base de datos
+# de la demo y los .env con claves. Va en la raiz y no en azureml/ porque el
+# contexto es la raiz.
+
+.git
+.venv
+node_modules
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+
+# .env y cualquier archivo de credenciales: nunca suben al workspace.
+.env
+.env.*
+*.pem
+*.key
+
+# Base de datos de la demo y artefactos de corridas locales.
+data
+*.db
+*.sqlite3
+mlruns
+mlflow.db
+
+# Lo que los jobs no necesitan.
+frontend
+docs
+eval-prompt/annotation
+eval-prompt/corpus
+
+# OJO: config/ NO se puede excluir. sirena_schema.ontologia resuelve
+# config/ontologia.yaml con una ruta relativa al directorio de trabajo del
+# proceso, asi que sin ese archivo el job muere al importar inference, antes
+# de hacer nada. El corpus tampoco se sube por aqui: entra como Data asset
+# (azureml:gold_v1), no como codigo.

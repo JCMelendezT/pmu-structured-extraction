@@ -1,0 +1,6 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: sirena-eval
+version: 1
+build:
+  path: .
+  dockerfile_path: Dockerfile

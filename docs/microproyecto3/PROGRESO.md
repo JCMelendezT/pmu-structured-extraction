@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5 y A6 hechos; A3 revertido y absorbido en A5; A7 y A8 pendientes.
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1, A2, A4, A5, A6 y A7 hechos; A3 revertido y absorbido en A5; A8 pendiente.
 
 ---
 
@@ -44,7 +44,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **6 hechos, 3 pendientes**. No toca Azure, no gasta crédito.
+Estado: **7 hechos, 2 pendientes**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -131,6 +131,12 @@ Estado: **6 hechos, 3 pendientes**. No toca Azure, no gasta crédito.
 - **Criterio de aceptación:** `requirements.txt` se genera con `uv export --package inference --no-dev --no-hashes --no-emit-workspace`; la imagen instala sin errores; el `.amlignore` excluye `.git`, `data/`, `frontend/`, `*.db` y los `.env`.
 - **Confirmación humana:** no.
 - **Alcance corregido tras revertir A3.** Este ticket se apoyaba en "la referencia de Key Vault en el Environment `sirena-eval`", que es la premisa falsa que tumbó A3. **A7 no configura ningún secreto**: el Environment solo lleva `azure-identity` y `azure-keyvault-secrets` en la imagen (plan L318) para que el job pueda leer del Key Vault por código. La referencia de Key Vault como mecanismo nativo no existe para command jobs. El permiso se otorga en el ticket B7 (Fase 4) y la lectura efectiva se confirma en la corrida corta de la Fase 6.
+- **Estado:** **hecho**. `requirements.txt` (316 líneas, bloqueado por uv), `Dockerfile`, `environment.yml` y `.amlignore` en la raíz.
+- **El `requirements.txt` se generó con `uv export -o`, no con `>`:** el plan (L310) usa redirección de shell, y la regla de edición del repo la prohíbe. `-o` hace que sea el propio uv el que escriba el archivo, así que no pasa por PowerShell ni arriesga la codificación. Mismo resultado, sin la parte que ya sabemos que da problemas.
+- **`config/` no se puede excluir del `.amlignore`, y está anotado ahí.** `sirena_schema.ontologia` resuelve `config/ontologia.yaml` con una ruta **relativa al directorio de trabajo del proceso** (`ONTOLOGIA_PATH` o `config/ontologia.yaml`). En el job el CWD es la raíz del contexto de código, así que sin ese archivo el job muere al importar `inference`, antes de evaluar nada. Es un fallo silencioso por omisión: nadie lo ve hasta que el job falla en Azure.
+- **El corpus no se sube como código.** Va como Data asset (`azureml:gold_v1`), que se registra aparte, así que `eval-prompt/corpus` sí se excluye del contexto de subida sin romper nada.
+- **La imagen no lleva el código del repo, y es a propósito:** el `Dockerfile` solo instala dependencias. El código viaja job por job con la propiedad `code: ../..` de cada componente. Por eso el image build context es `azureml/env/` y no la raíz.
+- **No se construyó la imagen.** Requiere red y Azure; el build real es un ticket de la Fase 3. Acá se verificó que el `environment.yml` parsea y que las dependencias directas de `inference` y `sirena-schema` (`fastapi`, `uvicorn`, `groq`, `mlflow`, `pydantic`, `pyyaml`) están todas en el `requirements.txt`.
 
 ### A8. YAML de componentes y del pipeline
 
@@ -342,3 +348,4 @@ Se responden en la etapa que las necesita, no antes.
 | 5 | 2026-09-27 | A4 hecho: `registro.py` ya no cambia de experimento cuando existe `MLFLOW_RUN_ID`. El arreglo fue **una línea**: `mlflow.start_run()` ya retoma la corrida del padre por su cuenta, así que lo único roto era el `set_experiment` incondicional. **Suite: 352 pasan, 1 xfail** |
 | 6 | 2026-09-27 | A5 hecho: `evaluar.py` y `comparar.py`. La clave se resuelve adentro del proceso y no se imprime; el desempate por costo quedó anclado a `gpt-oss-20b` con umbral estricto de 0,02. **Suite: 371 pasan, 1 xfail**. Se apartó del plan a propósito: `metricas.json` lleva `"modelo"` porque el job que compara no recibe el modelo por input |
 | 7 | 2026-09-27 | A6 hecho: `INFERENCE_MODELO` con default `openai/gpt-oss-20b` en el servicio `inference` del Compose. El default sale de `MODELO_POR_DEFECTO` de `registro.py`, no de un literal repetido. Sin Docker local: el `docker compose` de esta máquina no tiene plugin, y la imagen de la VM es de Azure, no nuestra |
+| 8 | 2026-09-27 | A7 hecho: `requirements.txt` generado con `uv export -o` (316 líneas) en vez de la redirección `>` del plan, más `Dockerfile`, `environment.yml` y `.amlignore` en la raíz. **Ojo con `config/`**: `sirena_schema.ontologia` lo resuelve por ruta relativa al CWD, así que excluirlo del `.amlignore` rompe el job al importar. La imagen no se construyó: eso es Fase 3 |
