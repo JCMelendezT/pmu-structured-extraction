@@ -235,6 +235,24 @@ class TestPipeline:
         # Assert
         assert jobs == esperados, f"Faltan o sobran pasos: {esperados.symmetric_difference(jobs)}"
 
+    def test_ningun_identificador_de_azure_lleva_default(self, pipeline: dict[str, Any]) -> None:
+        """El repositorio es publico: un default filtraria el workspace.
+
+        El MLClient no deduce estos tres valores dentro de un job, asi que se
+        pasan al crear el job. Si alguien les pone default para "ahorrar" el
+        comando, el identificador queda en un archivo versionado.
+        """
+        # Arrange
+        identificadores = {"subscription_id", "resource_group", "workspace"}
+        # Act
+        con_default = {
+            nombre
+            for nombre, definicion in pipeline["inputs"].items()
+            if nombre in identificadores and "default" in definicion
+        }
+        # Assert
+        assert not con_default, f"Identificadores de Azure con default: {con_default}"
+
     @pytest.mark.parametrize("job", JOBS)
     def test_cada_job_apunta_a_un_componente_existente(
         self, pipeline: dict[str, Any], job: str
