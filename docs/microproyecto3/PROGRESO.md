@@ -341,6 +341,8 @@ Nota: B5 dice `dev.jsonl` y `eval.jsonl`, pero el README y el plan (L158) descri
 - **Criterio de aceptación:** el Environment queda `Succeeded`; se anota el tiempo de construcción.
 - **Confirmación humana:** **sí**. Costo de la construcción, y después lo consume cada job.
 
+**Resultado: iniciado.** El Environment `sirena-eval` versión `1` fue creado con `az ml environment create --file azureml/env/environment.yml --workspace-name mlw-sirena --resource-group rg-sirena-mp3 --no-wait`. El build context se subió al blob storage (`mlwsirenstorage50b27a14d`). El Docker build (imagen con los ~300 paquetes de `requirements.txt`) es asíncrono — el `provisioningState` aún no aparece, lo cual es normal para el inicio: el build tarda varios minutos. El `environment.yml` define `name: sirena-eval`, `version: 1`, build con `Dockerfile` desde `azureml/env/`.
+
 ### B7. Crear el clúster y su identidad
 
 - **Toca:** `cpu-sirena`, `Standard_DS2_v2`, `min-instances 0`, `max-instances 2` (tope duro en las reglas), identidad administrada y permiso de lectura del secreto.
