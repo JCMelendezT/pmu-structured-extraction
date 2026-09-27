@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada** (hallazgos y decisiones). Etapas B a F pendientes de ejecutar.
+Estado de este documento: **Sesión 1 cerrada, Etapa A iniciada.** Línea base en verde desde `d10056b`. Tickets A0 y A1 hechos; A2 a A8 pendientes.
 
 ---
 
@@ -26,8 +26,8 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 | H8 | La Fase 7 del plan clona el upstream, lo que descartaría los componentes de `azureml/` que viven en el fork | Fase 7 del plan, paso de clonado | **Pendiente.** El ticket D2 clona el fork y la rama `feature/azureml-pipeline` |
 | H9 | El profesor aceptó que el LLM se sirva desde Groq mientras la evaluación, la comparación, el registro y el despliegue vivan en Azure ML | Respuesta del profesor, 2026-09-26 | **Resuelto.** D5. La pregunta abierta quedó marcada en el plan |
 | H10 | No estaba definido sobre qué suscripción se monta todo, lo que bloqueaba los permisos del compañero y el alcance de los comandos | Decisión del equipo | **Resuelto.** D6: una sola suscripción, con rol acotado para el compañero |
-| H11 | La rama base `develop` **no pasa** `make format-check` ni `make test`. `ruff format` marcaría 4 archivos, dos de ellos justo los que este microproyecto va a tocar: `backend/inference/inference/evaluacion.py:392` y `backend/inference/inference/registro.py:82`, más `tests/inference/test_evaluacion.py:543` y `tests/inference/test_registro.py:257`. Con el entorno sincronizado, la suite da **327 pasan, 11 fallan, 1 xfail** | `make format-check` y `make test` sobre `develop` | **Abierto.** Es previo a este trabajo: el diff de la sesión 1 solo toca tres `.md`. Ver ticket A0 |
-| H12 | Las 11 pruebas que fallan no son un bug de código: las 11 son `spacy.load("es_core_news_md")`, y el modelo en español no se instala con `uv sync --all-packages`. Sin él, `anonimizacion` y `orquestador` no corren | `backend/process/process/anonimizacion.py:70`, 7 pruebas en `test_anonimizacion.py` y 4 en `test_orquestador.py` | **Abierto.** Ver ticket A0. Sin esto no hay línea base verde contra la cual medir la Etapa A |
+| H11 | La rama base `develop` no pasaba `make format-check`: `ruff format` marcaría 4 archivos, dos de ellos justo los que este microproyecto va a tocar (`backend/inference/inference/evaluacion.py` y `backend/inference/inference/registro.py`), más `tests/inference/test_evaluacion.py` y `tests/inference/test_registro.py`. **El mismo problema está en `main` del repositorio original**: no es una regresión del fork | `make format-check` sobre `develop` | **Resuelto.** Commit `d10056b`, verificado que el AST de los 4 archivos es idéntico antes y después |
+| H12 | Las 11 pruebas que fallaban eran **del entorno local, no del repo**: las 11 son `spacy.load("es_core_news_md")` y el modelo en español faltaba en esta máquina. `Makefile:8` ya lo descarga en `make install`, o sea que en el equipo que hizo el repo sí estaba. Con el modelo instalado, las 11 pasan | `backend/process/process/anonimizacion.py:70`, 7 pruebas en `test_anonimizacion.py` y 4 en `test_orquestador.py` | **Resuelto.** `uv run --package process python -m spacy download es_core_news_md`. Sin cambios en el repo |
 
 ## 2. Decisiones del equipo
 
@@ -43,17 +43,24 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **1 hecho, 8 pendientes**. No toca Azure, no gasta crédito.
+Estado: **2 hechos, 7 pendientes**. No toca Azure, no gasta crédito.
 
-> **A0 es bloqueante y tiene que ir primero.** `REGLAS_AGENTE.md` exige `make lint`, `make format-check` y `make test` en verde antes de cada commit, y la rama base no lo está (H11 y H12). Sin A0, el primer commit de la Etapa A nace sobre una línea base roja y no hay forma de demostrar que un cambio no la empeoró.
+> **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
+
+| Puerta | Resultado |
+| --- | --- |
+| `make lint` | `All checks passed!` |
+| `make format-check` | en verde, 142 archivos |
+| `make test` | **338 pasan, 1 xfail, 1 warning** |
 
 ### A0. Línea base verde antes de tocar nada
 
 - **Objetivo:** que `develop` pase sus propias puertas de calidad, para que la Etapa A se mida contra una referencia real.
-- **Toca:** `backend/inference/inference/evaluacion.py`, `backend/inference/inference/registro.py`, `tests/inference/test_evaluacion.py`, `tests/inference/test_registro.py` (solo formato), y el procedimiento de instalación del modelo de spaCy (`es_core_news_md`), documentado en el `Makefile` o en el README.
-- **Criterio de aceptación:** `make lint`, `make format-check` y `make test` en verde sobre la rama sin cambios de este microproyecto; el recuento de pruebas queda anotado como referencia.
-- **Confirmación humana:** **sí**, porque es el primer commit de código y las reglas de la sesión 1 prohíben escribir código. El equipo tiene que autorizar abrir la Etapa A con este ticket.
-- **Nota:** el formateo de los 4 archivos no cambia comportamiento, pero los 2 archivos formateados son los que la Etapa A va a modificar, así que dejarlo para después haría imposible distinguir el formato previo de un cambio nuestro.
+- **Criterio de aceptación:** las tres puertas en verde sobre la rama sin cambios de este microproyecto, con el recuento anotado como referencia.
+- **Confirmación humana:** sí, autorizada el 2026-09-27.
+- **Estado:** **hecho**. Dos commits, porque son cosas distintas:
+  - `d10056b` — `ruff format` sobre los 4 archivos, verificado con comparación de AST (idéntico antes y después). Problema heredado, también presente en `main` del original.
+  - Entorno local — `uv run --package process python -m spacy download es_core_news_md`. Sin commit: el `Makefile` ya lo hacía, solo faltaba en esta máquina. Las 11 pruebas rojas **no eran del repo**.
 
 ### A1. Fijar LF en el corpus y recuperar los checksums
 
@@ -299,13 +306,13 @@ Se responden en la etapa que las necesita, no antes.
 
 | # | Pregunta | Se resuelve en |
 | --- | --- | --- |
-| 1 | ¿Se autoriza el ticket A0, que abre la Etapa A tocando código antes que cualquier componente? Sin ese "ok", la Etapa A no puede empezar porque la línea base está roja | Antes de la Etapa A |
-| 2 | ¿Cuál es la fecha de entrega y sustentación? Con ella se fija un cronograma por fechas | Etapa F |
-| 3 | ¿Se hace el extra de Designer? | Etapa E, antes de arrancar E1 |
-| 4 | ¿Se cierra H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`? | Antes de la Etapa A |
+| 1 | ¿Cuál es la fecha de entrega y sustentación? Con ella se fija un cronograma por fechas | Etapa F |
+| 2 | ¿Se hace el extra de Designer? | Etapa E, antes de arrancar E1 |
+| 3 | ¿Se cierra H7, la corrección de `AGENTS.md` que dice Llama 3.1 8B cuando el modelo es `gpt-oss-20b`? | Antes de cerrar la Etapa A |
 
 ## 10. Registro de sesiones
 
 | Sesión | Fecha | Resultado |
 | --- | --- | --- |
-| 1 | 2026-09-27 | Fork y rama creados, CRLF del corpus corregido (A1), plan contrastado con el código, 12 hallazgos y 7 decisiones registradas, Etapas A a F partidas en 36 tickets. Se detectó que `develop` no pasa sus propias puertas de calidad (H11, H12) y se abrió el ticket bloqueante A0 |
+| 1 | 2026-09-27 | Fork y rama creados, CRLF del corpus corregido (A1), plan contrastado con el código, 12 hallazgos y 7 decisiones registradas, Etapas A a F partidas en 36 tickets |
+| 2 | 2026-09-27 | Ticket A0 autorizado y cerrado en dos commits: `d10056b` formatea 4 archivos (AST idéntico verificado) y se instala `es_core_news_md`, que faltaba solo en esta máquina. **Línea base en verde: 338 pasan, 1 xfail.** Las 11 pruebas rojas no eran del repo |
