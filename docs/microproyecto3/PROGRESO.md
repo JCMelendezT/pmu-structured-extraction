@@ -296,6 +296,12 @@ El error distingue además dos tenants: el `AADSTS50079` anterior señalaba el "
 - **Confirmación humana:** **sí**. Crea un recurso de facturación, costo $0.
 - **Límite que hay que tener presente:** un presupuesto **no detiene el gasto**, solo avisa. El control real es `min-instances 0` en el clúster y `az vm deallocate` al terminar cada sesión. Está anotado en la sección de controles de costo de `PLAN_MP3.md`.
 
+**Resultado: hecho.** `presupuesto-sirena-mp3` creado en `rg-sirena-mp3`, 30 USD/mes, grain Mensual, del 1-S-2026 al 31-D-2026, con alertas 50% y 80% (ambas `GreaterThan`) a `juan_camilo.melendez@uao.edu.co`. El `id` confirma el alcance de grupo: `/subscriptions/1ba330a0-.../resourceGroups/rg-sirena-mp3/providers/Microsoft.Consumption/budgets/presupuesto-sirena-mp3`. `currentSpend.amount: 0.0`, como se espera: el workspace aún no existe.
+
+El comando se ejecutó sin necesidad de un `az login` adicional: el token del último login con `--claims-challenge` que creó el grupo siguió vivo con el claim `p1`.
+
+**B3 (rol `Contributor` del compañero) se mueve a DESPUÉS de B4**, como pediste. El permiso no lo necesitan el workspace ni el clúster, solo se necesita antes de la sustentación. No bloquea nada.
+
 ### B4. Crear el workspace y guardar el URI de MLflow
 
 - **Toca:** workspace `mlw-sirena` en `rg-sirena-mp3`; `az configure --defaults`.
