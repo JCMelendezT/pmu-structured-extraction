@@ -6,7 +6,7 @@ Bitácora de la implementación. La fuente de verdad del *qué* es `PLAN_MP3.md`
 **Fork:** `JCMelendezT/pmu-structured-extraction` · **Upstream:** `Juanxo17/pmu-structured-extraction`
 **Reglas:** `docs/microproyecto3/REGLAS_AGENTE.md`
 
-Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0, A1 y A2 hechos; A3 a A8 pendientes.
+Estado de este documento: **Sesión 1 cerrada, Etapa A en curso.** Línea base en verde desde `d10056b`. Tickets A0 a A3 hechos; A4 a A8 pendientes.
 
 ---
 
@@ -43,7 +43,7 @@ Contraste del plan contra el código real del fork. La evidencia es el número d
 
 ## 3. Etapa A — Cambios al repositorio, sin Azure
 
-Estado: **3 hechos, 6 pendientes**. No toca Azure, no gasta crédito.
+Estado: **4 hechos, 5 pendientes**. No toca Azure, no gasta crédito.
 
 > **Línea base de calidad (commit `d10056b`).** A partir de este punto cualquier falla es nuestra, no heredada. Es lo que permite distinguir un cambio nuestro de una desviación previa.
 
@@ -85,6 +85,8 @@ Estado: **3 hechos, 6 pendientes**. No toca Azure, no gasta crédito.
 - **Toca:** `azureml/src/leer_secreto.py`, `tests/azureml/test_leer_secreto.py`.
 - **Criterio de aceptación:** devuelve la clave sin imprimirla; los asserts verifican que la clave nunca aparezca en los logs ni en la salida de los tests; falla con error explícito si no encuentra la variable ni el secreto.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (5 pruebas). Lee la clave por nombre de variable, trata `""` como ausente, y **no registra ni imprime nada**: hay un test con `caplog` que falla si alguien agrega un log con la clave, y otro que verifica que no tome el valor de otra variable del entorno. El error dice cómo cablearla.
+- **Desviación registrada — el plan quedó obsoleto en este punto.** El plan (L491) pedía "leer el secreto del Key Vault con `DefaultAzureCredential` e imprimirlo para exportarlo". Imprimir un secreto lo mete al log del job, que se conserva y ve cualquiera con acceso al workspace, y obligaría a agregar `azure-identity` + `azure-keyvault-secrets` (hoy no hay **ningún** Azure SDK en el repo) al paquete `inference`, que es el que se hornea en la imagen Docker. La lectura desde Key Vault la hace la **identidad administrada del job** de forma nativa, con la referencia de Key Vault en el Environment `sirena-eval` (A7); Python solo lee `os.environ`. Resultado: cero dependencias nuevas y el secreto nunca toca un log. Si igual se quiere el cliente de Azure en Python, es un `uv add` y unas 20 líneas más.
 
 ### A4. Proteger `registro.py` cuando la corrida ya existe
 
@@ -319,3 +321,4 @@ Se responden en la etapa que las necesita, no antes.
 | 1 | 2026-09-27 | Fork y rama creados, CRLF del corpus corregido (A1), plan contrastado con el código, 12 hallazgos y 7 decisiones registradas, Etapas A a F partidas en 36 tickets |
 | 2 | 2026-09-27 | Ticket A0 autorizado y cerrado en dos commits: `d10056b` formatea 4 archivos (AST idéntico verificado) y se instala `es_core_news_md`, que faltaba solo en esta máquina. **Línea base en verde: 338 pasan, 1 xfail.** Las 11 pruebas rojas no eran del repo |
 | 3 | 2026-09-27 | A2 hecho: `validar_corpus` con los tres checksums del README y salida `gold_v1/eval.jsonl` + `manifest.json`. Los conteos reales son 60/340/400, y el total del corpus es 400, no la suma de los tres archivos. **Suite: 346 pasan, 1 xfail** |
+| 4 | 2026-09-27 | A3 hecho: `leer_secreto` lee la clave de la variable de entorno sin imprimirla ni registrarla. Se **descartó** el cliente de Key Vault en Python del plan (L491): lo hace la identidad administrada del job, y evita sumar dos Azure SDK al paquete que se hornea. **Suite: 351 pasan, 1 xfail** |
