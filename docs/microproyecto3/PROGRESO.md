@@ -537,7 +537,7 @@ Qué se cambió, y son dos líneas:
 
 ## 11. Etapa de Infraestructura — VM con Terraform (PLAN_INFRA.md)
 
-Estado: **I0 hecho, 8 pendientes** (I1 a I8). Fuente de verdad: `PLAN_INFRA.md`.
+Estado: **I0 e I1 hechos, 7 pendientes** (I2 a I8). Fuente de verdad: `PLAN_INFRA.md`.
 
 ### I0. Cerrar B7 (pipeline de Azure ML) — **HECHO**
 
@@ -564,12 +564,23 @@ Estado: **I0 hecho, 8 pendientes** (I1 a I8). Fuente de verdad: `PLAN_INFRA.md`.
   3. `INFERENCE_MODELO` nunca llegaba → movido a nivel de job (commit `729e73a`)
   4. `AssetTypes()` no acepta strings → string directo en `registrar.py` (commit `d7041d0`)
 
-### I1. Código Terraform (sin tocar Azure)
+### I1. Código Terraform (sin tocar Azure) — **HECHO**
 
 - **Objetivo:** escribir `infra/terraform/` y `infra/scripts/` según PLAN_INFRA.md sección 5.
 - **Toca:** `versions.tf`, `providers.tf`, `variables.tf`, `data.tf`, `network.tf`, `vm.tf`, `roles.tf`, `outputs.tf`, `cloud-init.yaml.tftpl`, `terraform.tfvars.example`, `.gitignore`, scripts.
 - **Criterio de aceptación:** `terraform init`, `terraform fmt -check -recursive` y `terraform validate` en verde; `.gitignore` probado con `git status`.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (commits `849bf4d` terraform, `8c5b94c` scripts, 2026-09-28).
+- **Puertas verificadas:** `terraform init` OK, `terraform fmt -check -recursive` OK, `terraform validate` "Success!", `bash -n` en los 3 scripts OK, `git status` sin tfstate ni tfvars.
+- **Puntos clave implementados:**
+  - Lo existente (grupo, workspace, Key Vault) como bloques `data`, nunca como `resource`.
+  - `azurerm ~> 4.0`, `subscription_id` por variable, `resource_provider_registrations = "none"`.
+  - Ninguna variable con identificador de suscripción como default.
+  - NSG: 22 solo `ips_admin`; 8000 y 8501 para `concat(ips_admin, ips_equipo)`. Nada más de entrada.
+  - OS disk `StandardSSD_LRS` 32 GiB; identidad `SystemAssigned`; auto-apagado 23:00 "SA Pacific Standard Time"; `lifecycle { ignore_changes = [custom_data] }`.
+  - Dos `azurerm_role_assignment`: Key Vault Secrets User y AzureML Data Scientist, con `principal_type = "ServicePrincipal"`.
+  - `cloud-init.yaml.tftpl`: Docker con plugin de Compose, Azure CLI con extensión ml, clona `repo_url` en `repo_branch`. Sin secretos.
+  - `.gitignore`: `.terraform/`, `*.tfstate`, `*.tfstate.*`, `*.tfplan`, `terraform.tfvars`, `crash.log`. `.terraform.lock.hcl` sí se versiona.
 
 ### I2. Secreto de Telegram en el Key Vault
 
