@@ -538,7 +538,7 @@ Qué se cambió, y son dos líneas:
 
 ## 11. Etapa de Infraestructura — VM con Terraform (PLAN_INFRA.md)
 
-Estado: **I0, I1, I3, I4 e I5 hechos, 4 pendientes** (I2, I6, I7, I8). Fuente de verdad: `PLAN_INFRA.md`.
+Estado: **I0, I1, I2, I3, I4 e I5 hechos, 3 pendientes** (I6, I7, I8). Fuente de verdad: `PLAN_INFRA.md`.
 
 ### I0. Cerrar B7 (pipeline de Azure ML) — **HECHO**
 
@@ -583,12 +583,13 @@ Estado: **I0, I1, I3, I4 e I5 hechos, 4 pendientes** (I2, I6, I7, I8). Fuente de
   - `cloud-init.yaml.tftpl`: Docker con plugin de Compose, Azure CLI con extensión ml, clona `repo_url` en `repo_branch`. Sin secretos.
   - `.gitignore`: `.terraform/`, `*.tfstate`, `*.tfstate.*`, `*.tfplan`, `terraform.tfvars`, `crash.log`. `.terraform.lock.hcl` sí se versiona.
 
-### I2. Secreto de Telegram en el Key Vault
+### I2. Secreto de Telegram en el Key Vault — **HECHO**
 
 - **Objetivo:** `telegram-bot-token` en el Key Vault.
 - **Toca:** `az keyvault secret set`.
 - **Criterio de aceptación:** `az keyvault secret show ... --name telegram-bot-token --query "attributes.enabled"` devuelve `true`.
 - **Confirmación humana:** **sí**, y además la ejecuta el humano.
+- **Estado:** **hecho** (2026-09-27, ejecutado por Juan directamente). Verificado `attributes.enabled: true` antes de I4.
 
 ### I3. Plan y aplicación — **HECHO**
 
