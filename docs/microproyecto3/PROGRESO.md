@@ -67,6 +67,7 @@ B1 iba a corregir el plan para borrar `Standard_D2as_v4` del Plan B del clúster
 **Responsabilidad compartida.** El agente tomó el nombre del plan, midió la familia equivocada y presentó el 0 como verificado. El compañero **aprobó las tres correcciones sin preguntar la procedencia del nombre de la familia**, y la segunda —la que borraba el Plan B— estaba a punto de pasar. Ninguno de los dos consultó el catálogo. Una corrección de infraestructura que borra una opción de respaldo no se aprueba por confianza en el informe: se aprueba por procedencia.
 
 | H17 | **H16 estaba mal.** El disco de 32 GB se cotizó correctamente a 2,4/mes en el plan original. H16 corrigió a `E1 LRS` a 0,30/mes, pero `E1` es de 4 GiB, `E4` es de 32 GiB y 256 GiB es `E15`. El precio original era el correcto. Verificado en `prices.azure.com` (`skuName eq 'E4 LRS'`, westus: 2,40) y en la documentación de tipos de disco de Azure. **Yo aprobé la corrección de H16 sin verificarla.** | `prices.azure.com` con `armRegionName eq 'westus'`, `skuName eq 'E4 LRS'`; documentación de tipos de disco administrado | **Resuelto.** Se revierte la corrección de H16. El disco de 32 GB es `E4 LRS` a 2,40/mes. La tabla de costos vuelve a los valores originales |
+| H18 | `comparar.py` línea 95 hardcodea el string "por costo y latencia" en la razón de desempate, pero la regla solo evalúa F1 y costo (el modelo 20b es más barato). En esta corrida el 120b fue más rápido en promedio (2758,2 ms vs 4665,2 ms), lo que hace que el string sea engañoso. El string debe decir que gana por costo, no por latencia. | `azureml/src/comparar.py:95` vs métricas de la corrida `affable_circle_lzy6rwvpqm` | **Pendiente.** El string debe corregirse para reflejar que la regla evalúa F1 y costo, no latencia. No afecta la decisión (el 20b es más barato), pero el string es incorrecto |
 
 ## 2. Decisiones del equipo
 
@@ -536,14 +537,32 @@ Qué se cambió, y son dos líneas:
 
 ## 11. Etapa de Infraestructura — VM con Terraform (PLAN_INFRA.md)
 
-Estado: **9 pendientes** (I0 a I8). Fuente de verdad: `PLAN_INFRA.md`.
+Estado: **I0 hecho, 8 pendientes** (I1 a I8). Fuente de verdad: `PLAN_INFRA.md`.
 
-### I0. Cerrar B7 (pipeline de Azure ML)
+### I0. Cerrar B7 (pipeline de Azure ML) — **HECHO**
 
 - **Objetivo:** clave real de Groq en el Key Vault, corrida corta `limite=5` en verde, `sirena-extractor:1` registrado.
 - **Toca:** `az keyvault secret set` (lo ejecuta el humano), `az ml job create`.
 - **Criterio de aceptación:** los 5 pasos en verde, `metricas.json` de los dos modelos, `decision.json`, y `sirena-extractor` versión 1 con sus tags en el registro.
 - **Confirmación humana:** **sí** para `az ml job create`.
+- **Estado:** **hecho** (pipeline `affable_circle_lzy6rwvpqm`, 2026-09-27).
+- **Alcance real — PRUEBA DE HUMO, no evaluación:** `limite=5` sobre un corpus de 340 (1,5 %). El objetivo era verificar que el pipeline corre de punta a punta y que los 4 bugs quedaran corregidos. Se cumplió. Las métricas de esta corrida NO son evidencia de equivalencia entre modelos.
+- **F1 1.0 en ambos modelos y diferencia 0,0000:** efecto techo de n=5, NO evidencia de equivalencia. Con 5 ejemplos ambos modelos aciertan todo. La comparación real requiere la corrida completa (C4, 340 mensajes).
+- **sirena-extractor:1 queda marcado como PROVISIONAL:** sus tags de métricas vienen de 5 ejemplos. Se reemplaza cuando C4 registre la versión con la corrida completa.
+- **Métricas de la corrida (solo para registro, no para conclusiones):**
+
+| Modelo | Ejemplos | Errores validación | Latencia media |
+|--------|----------|-------------------|----------------|
+| gpt-oss-20b | 5 | 0 | 4665,2 ms |
+| gpt-oss-120b | 5 | 0 | 2758,2 ms |
+
+- **Decisión de comparar:** ganador `openai/gpt-oss-20b`. Razón: diferencia de F1 promedio 0,0000 < 0,02, gana por costo y latencia. **Ojo:** el string dice "por costo y latencia" pero la regla solo evalúa F1 y costo. En esta corrida el 120b fue más rápido (2758,2 ms vs 4665,2 ms), lo que hace el string engañoso. Ver H18.
+- **sirena-extractor:1 tags:** `modelo=openai/gpt-oss-20b`, `f1_tipo_evento=1.0`, `latencia_p95_ms=17506.63`, `prompt_hash=compuerta=80d9f772ff1e,extraccion=99bf85192ca6`, `job_id=e78a49bd-5433-4bdc-86a5-2c51d76c178c`.
+- **4 bugs corregidos en esta sesión:**
+  1. `environment_variables` no existe en command component → movido a nivel de job en `pipeline.yml` (commit `729e73a`)
+  2. Falta `identity: type: managed` en eval jobs → agregado (commit `729e73a`)
+  3. `INFERENCE_MODELO` nunca llegaba → movido a nivel de job (commit `729e73a`)
+  4. `AssetTypes()` no acepta strings → string directo en `registrar.py` (commit `d7041d0`)
 
 ### I1. Código Terraform (sin tocar Azure)
 
