@@ -1,11 +1,15 @@
-# Reglas para el agente — Microproyecto 3 (SIRENA en Azure ML)
+# Reglas para el agente — Microproyecto 3 (SIRENA en Azure)
 
 Estas reglas aplican a cualquier agente (opencode u otro) que trabaje en el Microproyecto 3. Se suman a `AGENTS.md` de la raíz; si chocan, gana este archivo solo en lo que toca a Azure y al microproyecto.
 
+## Alcance de esta etapa: solo infraestructura
+
+Desde el 2026-09-27 el equipo se dividió el trabajo. Este agente trabaja para **Juan, responsable de la infraestructura en Azure**, y solo en eso: cerrar el pipeline de Azure ML (I0), la VM con Terraform, el despliegue de los contenedores, el ciclo MLOps en la VM, la entrega al equipo y la operación. Las pruebas de carga, el análisis, el documento final y la presentación son de otros integrantes: el agente no los hace ni los planea, salvo lo que pida `ENTREGA_EQUIPO.md`.
+
 ## Fuente de verdad
 
-- El plan es `docs/microproyecto3/PLAN_MP3.md`. No se inventan componentes, nombres ni pasos que no estén ahí.
-- Nombres fijos: grupo `rg-sirena-mp3`, workspace `mlw-sirena`, clúster `cpu-sirena`, VM `vm-sirena`, Data asset `gold_v1`, Environment `sirena-eval`, pipeline `sirena-eval`, experimento `sirena-evaluacion`, modelo `sirena-extractor`, rama `feature/azureml-pipeline`.
+- Para esta etapa el plan es `docs/microproyecto3/PLAN_INFRA.md` (tickets I0 a I8, decisiones I-D1 a I-D8). `docs/microproyecto3/PLAN_MP3.md` es el contexto general del microproyecto; sus Fases 7 y 8 quedan reemplazadas por `PLAN_INFRA.md`. No se inventan componentes, nombres ni pasos que no estén en esos dos documentos.
+- Nombres fijos: grupo `rg-sirena-mp3`, workspace `mlw-sirena`, Key Vault `mlwsirenkeyvault18607254`, clúster `cpu-sirena`, Data asset `gold_v1`, Environment `sirena-eval`, pipeline `sirena-eval`, experimento `sirena-evaluacion`, modelo `sirena-extractor`, rama `feature/azureml-pipeline`. Infraestructura nueva: `vnet-sirena`, `snet-sirena`, `nsg-sirena`, `pip-sirena`, `nic-sirena`, `vm-sirena`. Código de infraestructura en `infra/terraform/` y `infra/scripts/`.
 - El avance se lleva en `docs/microproyecto3/PROGRESO.md`: una línea por ticket con estado (pendiente, en curso, hecho, bloqueado), fecha y evidencia (commit, id de job, salida de comando). Se actualiza al terminar cada ticket.
 - Si el plan tiene un error o algo no funciona como dice, se anota en `PROGRESO.md` con la evidencia y se propone el cambio; no se corrige el plan en silencio.
 - Las "Preguntas abiertas" del plan las decide el humano. Si un paso depende de una, el agente se detiene y pregunta.
@@ -20,21 +24,26 @@ La suscripción es Azure for Students: crédito limitado, 3 IP públicas, region
 - Nunca borrar el grupo de recursos ni recursos existentes sin que el humano lo pida con esas palabras.
 - Nunca crear recursos fuera de las regiones permitidas por la política (Fase 0 del plan) ni fuera de `rg-sirena-mp3`.
 - Nunca subir `max-instances` del clúster por encima de 2 ni crear endpoints en línea (descartados en el plan).
+- Tamaños de VM permitidos: `Standard_B2s` (por defecto), `Standard_D2as_v4` (solo en ventanas de prueba de carga, y se vuelve a `B2s` al terminar) y `Standard_B2s_v2` (solo como plan B por capacidad o RAM). Cualquier otro tamaño lo decide el humano.
+- El NSG nunca se abre a `0.0.0.0/0` ni a `*`, y nunca expone 8001–8004. Solo 22 para `ips_admin` y 8000/8501 para `ips_admin + ips_equipo`.
+- Al terminar cada sesión de trabajo con la VM encendida, recordarle al humano `az vm deallocate`. El auto-apagado de las 23:00 es la red de seguridad, no el plan.
 - Ante `OutOfQuota`, `SkuNotAvailable` o `RequestDisallowedByPolicy`: detenerse, reportar y proponer la alternativa de la tabla de Riesgos. No probar tamaños o regiones al azar.
 
 ## Secretos
 
 - `GROQ_API_KEY`, `TELEGRAM_BOT_TOKEN` y cualquier credencial nunca se escriben en archivos versionados, en YAML de Azure ML, en logs ni en la salida del chat.
-- Los valores los escribe el humano (en `.env` local, en Key Vault o en el `.env` de la VM). El agente usa marcadores como `<GROQ_API_KEY>`.
-- Verificar antes de cada commit que `.env` no esté en el índice.
+- Los valores los escribe el humano (en `.env` local o en el Key Vault). El agente usa marcadores como `<GROQ_API_KEY>`. En la VM, el `.env` lo genera `infra/scripts/cargar_secretos.sh` desde el Key Vault; nadie pega secretos por SSH.
+- Verificar antes de cada commit que `.env`, `terraform.tfvars` y ningún `*.tfstate` estén en el índice.
+- **Un secreto que existe no es un secreto válido.** B7 falló porque el Key Vault guardaba el marcador `TU_CLAVE_DE_GROQ` en vez de la clave: la lectura funcionó y Groq respondió 401. Antes de lanzar un job o desplegar, se valida el formato **sin imprimir el valor**, con una consulta que devuelve solo `true` o `false`: `az keyvault secret show --vault-name mlwsirenkeyvault18607254 --name groq-api-key --query "starts_with(value, 'gsk_')" -o tsv`. Nunca `--query value`.
+- Cuando el agente le pase al humano un comando con un secreto, el marcador va entre `< >` y se le dice explícitamente que lo reemplace. Un marcador con forma de valor (`TU_CLAVE_DE_GROQ`) se copia tal cual.
 
 ## Código y repositorio
 
 - Se trabaja en `feature/azureml-pipeline`. Nunca push directo a `main` ni a `develop`; la integración va por PR con la plantilla del repo.
 - Gestor de paquetes: `uv`, como dice `AGENTS.md`. Única excepción: el `pip install` dentro de `azureml/env/Dockerfile`, que corre en la imagen de Azure ML y no en el workspace de uv.
-- Alcance: solo los archivos de la tabla "Cambios que hay que hacer en el repositorio" del plan. No se toca la lógica de BFF, CRUD, Process, Geo, Frontend ni del servicio Inference. Excepción acotada y ya decidida: el ajuste a `registro.py` para no llamar `mlflow.set_experiment` cuando exista `MLFLOW_RUN_ID` se hace en la etapa A con su prueba, porque la Fase 6 lo va a necesitar sí o sí (decisión D2 en `PROGRESO.md`).
+- Alcance: solo los archivos de la tabla "Cambios al repositorio" de `PLAN_INFRA.md` y, para lo ya hecho, la de `PLAN_MP3.md`. No se toca la lógica de BFF, CRUD, Process, Geo, Frontend ni del servicio Inference. Si la infraestructura necesita un cambio en esos servicios, se anota en `PROGRESO.md` y se le propone al humano para que lo coordine con el dueño del servicio. Excepción acotada y ya decidida: el ajuste a `registro.py` para no llamar `mlflow.set_experiment` cuando exista `MLFLOW_RUN_ID` se hace en la etapa A con su prueba, porque la Fase 6 lo va a necesitar sí o sí (decisión D2 en `PROGRESO.md`).
 - Todo script nuevo en `azureml/src/` lleva docstrings estilo Google y pruebas en `tests/azureml/` con patrón AAA.
-- Antes de cada commit: `make lint`, `make format-check` y `make test` en verde. Un ticket no se marca como hecho con pruebas fallando.
+- Antes de cada commit: `make lint`, `make format-check` y `make test` en verde. Un ticket no se marca como hecho con pruebas fallando. Si el commit toca `infra/terraform/`, además `terraform fmt -check -recursive` y `terraform validate`; si toca `infra/scripts/`, `bash -n` sobre cada script (y `shellcheck` si está instalado).
 - Commits pequeños, uno por ticket, con mensaje que diga qué y por qué.
 
 ## Edición de archivos
@@ -63,7 +72,8 @@ Descubiertos a pulso en esta máquina, con los que respondieron y los que no. La
 - **`az policy assignment show`: el parámetro de la política de regiones es `listOfAllowedLocations`, no `listOfAllowedRegions`.** Con el nombre equivocado la consulta devuelve `null`, que se lee como "sin restricción" si no se mira el JSON crudo.
 
 - **La API de precios devuelve un precio por MEDIDOR, no por SKU, y un SKU de VM tiene varios medidores legítimos.** `Standard_B2s_v2` en `westus` devuelve ocho filas. La única correcta es la de `productName` con el nombre de la **serie** (`Virtual Machines Bsv2 Series`), sin `Windows`, sin `Low Priority`, sin `Spot` y sin `Cloud Services`. Tomar la primera fila, o la más barata, da un número plausible y equivocado: la más barata es 0,0198 (Low Priority) contra 0,0992 de la real. Mismo cuidado con `isPrimaryMeterRegion`.
-- **Los discos no tienen un precio único: tienen bandas, y el tamaño decide.** `Standard SSD` va de `E1` a `E80`. Un disco de 32 GB es `E1 LRS` a **0,30/mes**; el 2,4/mes es `E4 LRS`, la banda de hasta 256 GiB. Cotizar "Standard SSD 32 GB" como un solo precio es como consultar la fuente equivocada (H16).
+- **Los discos no tienen un precio único: tienen bandas, y el tamaño decide.** `Standard SSD` va de `E1` a `E80`: `E1` = 4 GiB, `E2` = 8, `E3` = 16, **`E4` = 32**, `E6` = 64, `E10` = 128, `E15` = 256. Un disco de 32 GiB es **`E4 LRS` a 2,40/mes** en `westus`. La tabla de bandas se lee de la documentación de tipos de disco, no se deduce del precio.
+  - **Esta regla estuvo mal escrita (H17).** H16 afirmó que 32 GB caía en `E1` a 0,30/mes y que `E4` era la banda de hasta 256 GiB. Las dos cosas son falsas: `E1` es de 4 GiB y 256 GiB es `E15`. El precio original del plan (2,4/mes) era el correcto, y la "corrección" lo rompió. Es el mismo error de método que H14 y H16: un dato plausible que no se contrastó con la fuente. Además, la imagen de Ubuntu exige al menos 30 GiB, así que un disco `E1` ni siquiera podría arrancar la VM.
 - **El MCP de Azure no sirve para esto.** `pricing_get` con `service: "Virtual Machines Disks"` o `"Container Registry"` devuelve `items: []`, y exige `--sku` con nombres de SKU que no existen para discos ni registries. Para la tabla de costos hay que ir a `prices.azure.com` crudo:
   ```bash
   # precio de un medidor, filtrando por región y servicio
@@ -78,11 +88,27 @@ Descubiertos a pulso en esta máquina, con los que respondieron y los que no. La
   Se asignan con `az role assignment create --assignee-object-id <id> --assignee-principal-type <tipo> --role "Key Vault ..." --scope <id del Key Vault>`.
 - **Las asignaciones de rol a identidades administradas van con `--assignee-object-id` + `--assignee-principal-type ServicePrincipal`.** Con `--assignee` a secas, la CLI intenta resolver el id contra Graph y puede fallar o colgarse sin motivo claro. Las asignaciones tardan unos minutos en propagarse: si da `Forbidden` justo después de asignar, espera y reintenta antes de cambiar nada.
 
+## Terraform
+
+La VM y su red se gestionan con Terraform en `infra/terraform/`. Lo creado antes con la CLI (grupo, workspace, Key Vault, clúster, registro, Storage) **no se importa**: se referencia con bloques `data` (decisión I-D2).
+
+- **Puertas, en este orden:** `terraform fmt -check -recursive` → `terraform validate` → `terraform plan -out tfplan`. El resumen del plan se le muestra al humano **antes** de aplicar.
+- **Solo se aplica un plan guardado y revisado:** `terraform apply tfplan`, con confirmación explícita. Nunca `terraform apply -auto-approve` ni `apply` sin plan.
+- **Un plan con `to change` o `to destroy` distinto de 0 no se aplica** sin explicar recurso por recurso qué cambia y por qué, y sin confirmación. Si el plan quiere tocar algo que debía ser `data`, el error está en el código, no en Azure.
+- **`terraform destroy` solo si el humano lo pide con esas palabras.** Lo mismo para `terraform state rm`, `terraform import` y cualquier edición del estado.
+- **Estado y variables no se versionan:** `.terraform/`, `*.tfstate`, `*.tfstate.*`, `*.tfplan` y `terraform.tfvars` van en `.gitignore`. Sí se versionan los `.tf`, el `.terraform.lock.hcl` y `terraform.tfvars.example`.
+- **Ningún secreto en Terraform:** ni en `.tf`, ni en `tfvars`, ni en `cloud-init`, ni en outputs. Lo que entra en Terraform queda en el estado y en los metadatos de la VM. Los secretos viven en el Key Vault y la VM los lee con su identidad (I-D4).
+- **Ningún identificador de la suscripción como valor por defecto** en `variables.tf`: el repo es público. `subscription_id`, IP y rutas van en `terraform.tfvars`, que no se versiona.
+- **Proveedor:** `azurerm ~> 4.0`, con `subscription_id` explícito (obligatorio desde la versión 4) y `resource_provider_registrations = "none"` (los proveedores ya están registrados y registrarlos exige permisos que pueden fallar).
+- **Autenticación:** Terraform usa el token de la Azure CLI. Si `apply` falla con `AADSTS50076`, es el mismo problema de MFA de B2: se repite el `az login --tenant ... --scope` que funcionó, no se busca otro método de autenticación.
+- Los cambios de operación (autorizar una IP, subir el tamaño para una prueba de carga) se hacen editando `terraform.tfvars` y pasando por las mismas puertas, no con `az` directo sobre un recurso que gestiona Terraform. Un cambio con `az` sobre un recurso de Terraform desincroniza el estado.
+
 ## Entorno del humano
 
-- El equipo trabaja en Windows. Los bloques bash del plan se corren en Git Bash, WSL o Azure Cloud Shell; si el agente propone un comando para PowerShell, lo traduce (variables, continuación de línea con acento grave, comillas).
+- El equipo trabaja en Windows. Los bloques bash del plan se corren en Git Bash, WSL o Azure Cloud Shell; si el agente propone un comando para PowerShell, lo traduce (variables, continuación de línea con acento grave, comillas). Los scripts de `infra/scripts/` corren **dentro de la VM** (Ubuntu), no en Windows.
 - La Azure CLI local ya está autenticada contra "Azure for Students". El MCP de Azure está disponible para consultas.
-- Para ejecutar cosas dentro de la VM sin sesión SSH interactiva, usar `az vm run-command invoke --command-id RunShellScript` (también requiere confirmación, porque cambia la VM).
+- Terraform se instala en Windows con `winget install Hashicorp.Terraform` y corre en PowerShell desde `infra/terraform/`.
+- Para ejecutar cosas dentro de la VM sin sesión SSH interactiva, usar `az vm run-command invoke --command-id RunShellScript` (también requiere confirmación, porque cambia la VM). Ningún script que se ejecute así puede imprimir un secreto: la salida vuelve a la terminal y queda en el historial.
 
 ## Cómo reportar
 
