@@ -538,7 +538,7 @@ Qué se cambió, y son dos líneas:
 
 ## 11. Etapa de Infraestructura — VM con Terraform (PLAN_INFRA.md)
 
-Estado: **I0 e I1 hechos, 7 pendientes** (I2 a I8). Fuente de verdad: `PLAN_INFRA.md`.
+Estado: **I0, I1, I3, I4 e I5 hechos, 4 pendientes** (I2, I6, I7, I8). Fuente de verdad: `PLAN_INFRA.md`.
 
 ### I0. Cerrar B7 (pipeline de Azure ML) — **HECHO**
 
@@ -590,26 +590,36 @@ Estado: **I0 e I1 hechos, 7 pendientes** (I2 a I8). Fuente de verdad: `PLAN_INFR
 - **Criterio de aceptación:** `az keyvault secret show ... --name telegram-bot-token --query "attributes.enabled"` devuelve `true`.
 - **Confirmación humana:** **sí**, y además la ejecuta el humano.
 
-### I3. Plan y aplicación
+### I3. Plan y aplicación — **HECHO**
 
 - **Objetivo:** `terraform plan` con 0 cambios y 0 destrucciones sobre lo existente, luego `terraform apply`.
 - **Toca:** `terraform plan -out tfplan`, `terraform apply tfplan`.
 - **Criterio de aceptación:** VM creada, roles asignados, SSH funciona, `cloud-init status --wait` devuelve `done`.
 - **Confirmación humana:** **sí** para `terraform apply`.
+- **Estado:** **hecho** (VM `vm-sirena` en `chilecentral`, Standard_B2s_v2, 2026-09-28).
+- **Hallazgos durante la aplicación:**
+  - `var.location` era código muerto: los recursos usaban `data.azurerm_resource_group.rg.location` (westus). Corregido a `var.location`.
+  - `azurerm_subnet.snet` no tenía `location`, así que Terraform no detectaba el cambio de región. Agregado `lifecycle { replace_triggered_by = [azurerm_virtual_network.vnet] }`.
+  - 5 SKUs sin capacidad en `westus`: B2s, B2s_v2, B2ls_v2, B2as_v2, D2s_v3. La causa real era catálogo de SKU por región, no capacidad.
+  - `Standard_B2s` no está en el catálogo de `chilecentral` (región nueva, solo SKUs recientes). `Standard_B2s_v2` sí está.
+  - Auto-apagado descartado (H19): `Microsoft.DevTestLab/schedules` no disponible en `chilecentral`.
 
-### I4. Desplegar los contenedores en la VM
+### I4. Desplegar los contenedores en la VM — **HECHO**
 
 - **Objetivo:** 7 contenedores arriba y 5 `/health` en verde.
 - **Toca:** `cargar_secretos.sh`, `docker compose build --parallel 1`, `docker compose up -d`, `salud.sh`.
 - **Criterio de aceptación:** los 5 `/health` responden `ok`; `docker compose ps` sin reinicios; el tablero abre.
 - **Confirmación humana:** **sí** para `docker compose up -d`.
+- **Estado:** **hecho** (7 contenedores arriba, 5 `/health` OK, 2026-09-28).
+- **Verificación:** `.env` con permisos 600 y las 3 variables (GROQ_API_KEY, TELEGRAM_BOT_TOKEN, INFERENCE_MODELO). Tablero responde HTTP 200 en `http://57.156.64.147:8501`.
 
-### I5. Cerrar el ciclo MLOps
+### I5. Cerrar el ciclo MLOps — **HECHO**
 
 - **Objetivo:** la VM usa el modelo del registro.
 - **Toca:** `desplegar_config.sh`.
 - **Criterio de aceptación:** `docker compose exec inference env | grep INFERENCE_MODELO` muestra el modelo ganador de I0.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (`INFERENCE_MODELO=openai/gpt-oss-20b`, coincide con `sirena-extractor:1`, 2026-09-28).
 
 ### I6. Prueba de humo externa
 
