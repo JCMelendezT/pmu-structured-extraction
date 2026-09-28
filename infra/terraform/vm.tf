@@ -1,6 +1,6 @@
 resource "azurerm_linux_virtual_machine" "vm" {
   name                = "vm-sirena"
-  location            = data.azurerm_resource_group.rg.location
+  location            = var.location
   resource_group_name = data.azurerm_resource_group.rg.name
   size                = var.vm_size
   admin_username      = "azureuser"
@@ -41,14 +41,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
   }
 }
 
-resource "azurerm_dev_test_global_vm_shutdown_schedule" "auto_apagado" {
-  virtual_machine_id = azurerm_linux_virtual_machine.vm.id
-  location           = data.azurerm_resource_group.rg.location
-
-  daily_recurrence_time = var.apagado_hora
-  timezone              = "SA Pacific Standard Time"
-
-  notification_settings {
-    enabled = false
-  }
-}
+# azurerm_dev_test_global_vm_shutdown_schedule fue descartado: el servicio
+# Microsoft.DevTestLab/schedules no está disponible en chilecentral, y el
+# schedule debe estar en la misma región que la VM. El apagado es manual
+# con `az vm deallocate`. Ver PROGRESO.md, hallazgo H19.

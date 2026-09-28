@@ -60,8 +60,7 @@ variable "repo_branch" {
   default     = "feature/azureml-pipeline"
 }
 
-variable "apagado_hora" {
-  description = "Hora de auto-apagato en formato HHMM (hora de Bogotá)."
-  type        = string
-  default     = "2300"
-}
+# apagado_hora fue eliminada: el auto-apagado con
+# azurerm_dev_test_global_vm_shutdown_schedule no está disponible en
+# chilecentral. El apagado es manual con `az vm deallocate`. Ver PROGRESO.md,
+# hallazgo H19.
