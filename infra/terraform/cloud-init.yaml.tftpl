@@ -1,0 +1,22 @@
+#cloud-config
+package_update: true
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+
+runcmd:
+  # Docker con plugin de Compose
+  - curl -fsSL https://get.docker.com | sh
+  - usermod -aG docker azureuser
+
+  # Azure CLI con extensión ml
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+  - az extension add --name ml
+
+  # Clonar el repo
+  - git clone --branch ${repo_branch} ${repo_url} /home/azureuser/pmu-structured-extraction
+  - chown -R azureuser:azureuser /home/azureuser/pmu-structured-extraction

@@ -1,0 +1,4 @@
+subscription_id = "<ID_DE_TU_SUSCRIPCION>"
+ssh_public_key_path = "<RUTA_A_TU_LLAVE_PUBLICA_SSH>"
+ips_admin = ["<TU_IP_PUBLICA>"]
+ips_equipo = ["<IP_DEL_EQUIPO_1>", "<IP_DEL_EQUIPO_2>"]
