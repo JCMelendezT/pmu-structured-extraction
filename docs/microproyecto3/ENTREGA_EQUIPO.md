@@ -1,17 +1,15 @@
 # Entrega de la infraestructura — SIRENA en Azure
 
-> Plantilla. Los valores entre `< >` los completa Juan (o su agente en el ticket I7) con los datos reales después de desplegar. No poner aquí claves, tokens ni el `subscription_id`: este archivo se comparte con todo el equipo y el repo es público.
-
-**Responsable de la infraestructura:** Juan Meléndez · **Fecha de entrega:** `<AAAA-MM-DD>` · **Versión desplegada:** `<rama>` @ `<commit>`
+> **Responsable de la infraestructura:** Juan Meléndez · **Fecha de entrega:** 2026-09-28 · **Versión desplegada:** `feature/azureml-pipeline` @ `a4753ed`
 
 ## Dónde está
 
 | Qué | Dirección |
 | --- | --- |
-| Tablero del operador (Streamlit) | `http://<IP>:8501` |
-| API del BFF | `http://<IP>:8000` |
-| Documentación interactiva del BFF (Swagger) | `http://<IP>:8000/docs` |
-| Salud del BFF | `http://<IP>:8000/health` |
+| Tablero del operador (Streamlit) | `http://57.156.64.147:8501` |
+| API del BFF | `http://57.156.64.147:8000` |
+| Documentación interactiva del BFF (Swagger) | `http://57.156.64.147:8000/docs` |
+| Salud del BFF | `http://57.156.64.147:8000/health` |
 
 Solo esos dos puertos están abiertos, y **solo para las IP autorizadas**. CRUD, Process, Inference y Geo (8001–8004) son internos y no se pueden probar desde fuera.
 
@@ -21,24 +19,24 @@ Solo esos dos puertos están abiertos, y **solo para las IP autorizadas**. CRUD,
 2. Mándasela a Juan. Él la agrega en Terraform y te confirma (tarda unos minutos).
 3. Si cambias de red (casa, universidad, datos móviles), tu IP cambia y hay que pedirla de nuevo.
 
-IP autorizadas hoy: `<lista de nombres, sin las IP>`
+IP autorizadas hoy: Juan (admin), Compañero 1
 
 ## Cuándo está encendida
 
-- La VM **se apaga sola todos los días a las 23:00** (hora de Bogotá) para no gastar crédito.
+- **El apagado es manual:** `az vm deallocate -g rg-sirena-mp3 -n vm-sirena`. Si nadie la apaga, la VM se queda prendida consumiendo crédito.
 - Para usarla, avísale a Juan con anticipación: él la enciende y confirma que los servicios están sanos.
-- Para pruebas de carga sostenidas, pídele una **ventana de carga**: sube la VM a `Standard_D2as_v4` (2 vCPU sin ráfaga) durante la prueba y la regresa a `Standard_B2s` al terminar. Con la `B2s` la CPU baja cuando se agotan los créditos de ráfaga y los resultados salen distorsionados.
+- Para pruebas de carga sostenidas, pídele una **ventana de carga**: sube la VM a `Standard_D2as_v4` (2 vCPU sin ráfaga) durante la prueba y la regresa a `Standard_B2s_v2` al terminar. Con la `B2s_v2` la CPU baja cuando se agotan los créditos de ráfaga y los resultados salen distorsionados.
 
 ## Especificaciones
 
 | Qué | Valor |
 | --- | --- |
-| Región | `westus` (EE.UU. oeste; la política de la suscripción de estudiante no permite Latinoamérica) |
-| VM normal | `Standard_B2s`: 2 vCPU de ráfaga, 4 GB RAM |
+| Región | `chilecentral` (Chile; la suscripción permite Latinoamérica) |
+| VM normal | `Standard_B2s_v2`: 2 vCPU de ráfaga, 4 GB RAM |
 | VM en ventana de carga | `Standard_D2as_v4`: 2 vCPU dedicadas, 8 GB RAM |
 | Sistema | Ubuntu 22.04, Docker Compose, 7 contenedores en una sola VM |
 | Base de datos | SQLite dentro del contenedor de CRUD (un solo escritor) |
-| Modelo de lenguaje | `<modelo que dejó el registro de Azure ML>` vía API de Groq |
+| Modelo de lenguaje | `openai/gpt-oss-20b` vía API de Groq (provisional — registrado con `limite=5`, se reemplaza con la corrida completa) |
 
 ## Endpoints para las pruebas
 
@@ -60,7 +58,7 @@ Cuerpo de `POST /mensajes`:
   "fuente": "telegram",
   "id_externo": "carga-000001",
   "texto": "inundacion en el barrio Vista Hermosa, el agua ya entro a las casas",
-  "marca_temporal_origen": "2026-09-27T15:00:00Z",
+  "marca_temporal_origen": "2026-09-28T15:00:00Z",
   "autor_id_telegram": "prueba-carga"
 }
 ```
@@ -70,9 +68,10 @@ Cuerpo de `POST /mensajes`:
 1. **`id_externo` tiene que ser único en cada petición.** Si se repite, el BFF responde `409` y la prueba mide rechazos, no el sistema.
 2. **`POST /mensajes` responde `202` antes de procesar.** Su latencia es la de recibir el mensaje, no la del pipeline. Para medir el pipeline completo hay que consultar después `GET /reportes` y comparar tiempos.
 3. **El límite de `POST /mensajes` es Groq, no Azure.** Groq limita peticiones por minuto (responde `429`) y cobra por token en el plan de pago. Una prueba masiva sobre `POST /mensajes` mide a Groq y gasta la cuota del equipo. Recomendación: medir la infraestructura con los `GET`, y la escritura con volumen bajo y acordado con Juan.
-4. **CRUD usa SQLite con un solo escritor.** Con muchas escrituras concurrentes va a ser el primer cuello de botella. Es un hallazgo esperado para el análisis.
+4. **CRUD usa SQLite con un solo escritor.** Con muchas escrituras concurrentes va a ser el primer cuello de botella. Es un hallazgo esperable para el análisis.
 5. **No hay autenticación** en el BFF. No compartan la IP fuera del equipo.
 6. **No prueben el bot de Telegram con carga:** un solo proceso hace long polling y Telegram también limita.
+7. **Al apagar la VM, los contenedores no arrancan automáticamente.** Después de `az vm start` hay que ejecutar `docker compose up -d`.
 
 ## Métricas disponibles
 
