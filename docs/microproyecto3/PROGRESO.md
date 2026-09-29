@@ -69,6 +69,8 @@ B1 iba a corregir el plan para borrar `Standard_D2as_v4` del Plan B del clúster
 | H17 | **H16 estaba mal.** El disco de 32 GB se cotizó correctamente a 2,4/mes en el plan original. H16 corrigió a `E1 LRS` a 0,30/mes, pero `E1` es de 4 GiB, `E4` es de 32 GiB y 256 GiB es `E15`. El precio original era el correcto. Verificado en `prices.azure.com` (`skuName eq 'E4 LRS'`, westus: 2,40) y en la documentación de tipos de disco de Azure. **Yo aprobé la corrección de H16 sin verificarla.** | `prices.azure.com` con `armRegionName eq 'westus'`, `skuName eq 'E4 LRS'`; documentación de tipos de disco administrado | **Resuelto.** Se revierte la corrección de H16. El disco de 32 GB es `E4 LRS` a 2,40/mes. La tabla de costos vuelve a los valores originales |
 | H18 | `comparar.py` línea 95 hardcodea el string "por costo y latencia" en la razón de desempate, pero la regla solo evalúa F1 y costo (el modelo 20b es más barato). En esta corrida el 120b fue más rápido en promedio (2758,2 ms vs 4665,2 ms), lo que hace que el string sea engañoso. El string debe decir que gana por costo, no por latencia. | `azureml/src/comparar.py:95` vs métricas de la corrida `affable_circle_lzy6rwvpqm` | **Pendiente.** El string debe corregirse para reflejar que la regla evalúa F1 y costo, no latencia. No afecta la decisión (el 20b es más barato), pero el string es incorrecto |
 | H19 | **El auto-apagado con `azurerm_dev_test_global_vm_shutdown_schedule` es imposible en `chilecentral`.** El servicio `Microsoft.DevTestLab/schedules` no está disponible en `chilecentral` (región nueva, solo lleva SKUs recientes). El schedule DEBE estar en la misma región que la VM que referencia, así que no puede crearse en `westus` mientras la VM está en `chilecentral`. Sin auto-apagado, la VM se queda prendida consumiendo crédito si nadie la apaga manualmente con `az vm deallocate`. | `azurerm_dev_test_global_vm_shutdown_schedule` en `chilecentral` vs lista de regiones disponibles del servicio | **Resuelto por descarte.** El auto-apagado automático de PLAN_INFRA.md queda descartado para esta VM. El apagado es manual con `az vm deallocate`. El recurso `azurerm_dev_test_global_vm_shutdown_schedule` fue eliminado de `vm.tf` y la variable `apagado_hora` de `variables.tf` |
+| H20 | **La corrida completa (340 mensajes) falló por el techo diario de Groq (TPD), no por capacidad de Azure.** `evaluar_20b` consumió 198714/200000 tokens y `evaluar_120b` 199067/200000 tokens antes de quedarse sin cupo. Ambos alcanzaron a procesar casi la totalidad de los 340 ejemplos antes de fallar en los últimos. Costo real observado: ~588 tokens/ejemplo, similar en ambos modelos pese a la diferencia de tamaño (probablemente porque el costo lo domina el prompt de entrada, no la respuesta). Para la corrida de mañana: `limite=300` (200000 ÷ 588 ≈ 340 es el techo exacto observado; 300 deja ~24000 tokens de margen). | Métricas de Groq de la corrida completa (2026-09-28) | **Resuelto.** Corrida de mañana con `limite=300`. El techo de Groq es el cuello de botella, no Azure. |
+| H21 | **`proveedor.py` respeta el `Retry-After` de Groq literalmente, incluso cuando pide esperar más de 800 segundos.** Con `INFERENCE_INTENTOS_LLM=3`, un ejemplo puede tardar hasta ~25 minutos en fallar definitivamente (3 intentos con esperas de cientos de segundos cada uno) antes de tirar la excepción que mata el job entero. Es correcto para esperas cortas pero carísimo en tiempo de cómputo cuando el cupo diario ya está casi agotado. Mejora futura: cortar el intento si el `Retry-After` supera un umbral (ej. 60s) en vez de dormir la corrida entera. | `backend/inference/inference/proveedor.py:183-186` vs comportamiento observado en la corrida completa | **Pendiente.** No se corrige ahora por tiempo. Mejora futura: umbral de `Retry-After` para cortar el intento. |
 
 ## 2. Decisiones del equipo
 
@@ -538,7 +540,7 @@ Qué se cambió, y son dos líneas:
 
 ## 11. Etapa de Infraestructura — VM con Terraform (PLAN_INFRA.md)
 
-Estado: **I0, I1, I2, I3, I4 e I5 hechos, 3 pendientes** (I6, I7, I8). Fuente de verdad: `PLAN_INFRA.md`.
+Estado: **I0, I1, I2, I3, I4, I5, I6 e I7 hechos, 1 pendiente** (I8). Fuente de verdad: `PLAN_INFRA.md`.
 
 ### I0. Cerrar B7 (pipeline de Azure ML) — **HECHO**
 
@@ -622,12 +624,17 @@ Estado: **I0, I1, I2, I3, I4 e I5 hechos, 3 pendientes** (I6, I7, I8). Fuente de
 - **Confirmación humana:** no.
 - **Estado:** **hecho** (`INFERENCE_MODELO=openai/gpt-oss-20b`, coincide con `sirena-extractor:1`, 2026-09-28).
 
-### I6. Prueba de humo externa
+### I6. Prueba de humo externa — **HECHO**
 
 - **Objetivo:** mensaje real al bot, `POST /mensajes` → 202, acceso bloqueado desde IP no autorizada.
 - **Toca:** mensaje al bot, `curl -X POST`, prueba desde datos móviles.
 - **Criterio de aceptación:** las tres pruebas pasan.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (2026-09-29).
+- **Paso 1:** mensajes del bot aparecen en `GET /reportes` con tipo de evento y comuna. "Herido de bula" → salud_ambiental. Mensaje con ubicación → salud_ambiental, Comuna 14, Alfonso Bonilla Aragón.
+- **Paso 2:** `POST /mensajes` responde 202 con `{"id_mensaje": "carga-000001", "estado": "recibido"}`.
+- **Paso 3:** NSG verificado correctamente. IP no autorizada (PC WiFi `186.86.110.34`) → ambos puertos bloqueados. IP autorizada (celular datos móviles `186.102.86.17`) → ambos puertos responden (8000: `{"detail":"Not Found"}`, 8501: OK).
+- **Hallazgo:** al apagar la VM con `az vm deallocate`, los contenedores no arrancan automáticamente al encenderla. Hay que ejecutar `docker compose up -d` después de `az vm start`.
 
 ### I7. Entrega al equipo
 
