@@ -19,7 +19,19 @@ Solo esos dos puertos están abiertos, y **solo para las IP autorizadas**. CRUD,
 2. Mándasela a Juan. Él la agrega en Terraform y te confirma (tarda unos minutos).
 3. Si cambias de red (casa, universidad, datos móviles), tu IP cambia y hay que pedirla de nuevo.
 
-IP autorizadas hoy: Juan (admin), Compañero 1, Compañero 2
+IP autorizadas hoy: Juan (admin), Julián, Sebastián, Juan Plata
+
+## Acceso SSH
+
+El equipo puede conectarse por SSH para ver logs y contenedores:
+
+```bash
+ssh julian@57.156.64.147    # Julián
+ssh sebas@57.156.64.147     # Sebastián
+ssh juanp@57.156.64.147     # Juan Plata
+```
+
+Cada usuario tiene su llave SSH y está en el grupo `docker`, así que pueden ejecutar `docker compose ps`, `docker compose logs`, etc. sin sudo.
 
 ## Cuándo está encendida
 

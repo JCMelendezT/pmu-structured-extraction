@@ -540,7 +540,7 @@ Qué se cambió, y son dos líneas:
 
 ## 11. Etapa de Infraestructura — VM con Terraform (PLAN_INFRA.md)
 
-Estado: **I0, I1, I2, I3, I4, I5, I6 e I7 hechos, 1 pendiente** (I8). Fuente de verdad: `PLAN_INFRA.md`.
+Estado: **I0 a I7 hechos, 1 pendiente** (I8 — operación y limpieza). Fuente de verdad: `PLAN_INFRA.md`.
 
 ### I0. Cerrar B7 (pipeline de Azure ML) — **HECHO**
 
@@ -636,12 +636,16 @@ Estado: **I0, I1, I2, I3, I4, I5, I6 e I7 hechos, 1 pendiente** (I8). Fuente de 
 - **Paso 3:** NSG verificado correctamente. IP no autorizada (PC WiFi `186.86.110.34`) → ambos puertos bloqueados. IP autorizada (celular datos móviles `186.102.86.17`) → ambos puertos responden (8000: `{"detail":"Not Found"}`, 8501: OK).
 - **Hallazgo:** al apagar la VM con `az vm deallocate`, los contenedores no arrancan automáticamente al encenderla. Hay que ejecutar `docker compose up -d` después de `az vm start`.
 
-### I7. Entrega al equipo
+### I7. Entrega al equipo — **HECHO**
 
 - **Objetivo:** completar `ENTREGA_EQUIPO.md` y compartirlo.
 - **Toca:** `docs/microproyecto3/ENTREGA_EQUIPO.md`.
 - **Criterio de aceptación:** documento completo con IP, URLs, accesos y restricciones.
 - **Confirmación humana:** no.
+- **Estado:** **hecho** (2026-09-29).
+- **Permisos de Azure:** Reader (rg), Virtual Machine Contributor (VM), AzureML Data Scientist (workspace), Key Vault Reader (Key Vault) para Julián, Sebastián y Juan Plata.
+- **SSH:** usuarios `julian`, `sebas`, `juanp` creados con llaves, en grupo `docker`.
+- **ENTREGA_EQUIPO.md:** completado con IP `57.156.64.147`, chilecentral, Standard_B2s_v2, apagado manual, modelo `openai/gpt-oss-20b` provisional, SSH habilitado para el equipo.
 
 ### I8. Operación durante las pruebas y limpieza
 
