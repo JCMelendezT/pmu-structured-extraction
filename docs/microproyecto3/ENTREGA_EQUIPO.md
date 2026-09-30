@@ -19,7 +19,7 @@ Solo esos dos puertos están abiertos, y **solo para las IP autorizadas**. CRUD,
 2. Mándasela a Juan. Él la agrega en Terraform y te confirma (tarda unos minutos).
 3. Si cambias de red (casa, universidad, datos móviles), tu IP cambia y hay que pedirla de nuevo.
 
-IP autorizadas hoy: Juan (admin), Julián, Sebastián, Juan Plata
+IP autorizadas hoy: Juan (admin), Julián, Sebastián, Juan Plata, Cesar
 
 ## Acceso SSH
 
