@@ -29,6 +29,7 @@ El equipo puede conectarse por SSH para ver logs y contenedores:
 ssh julian@57.156.64.147    # Julián
 ssh sebas@57.156.64.147     # Sebastián
 ssh juanp@57.156.64.147     # Juan Plata
+ssh cesar@57.156.64.147     # Cesar
 ```
 
 Cada usuario tiene su llave SSH y está en el grupo `docker`, así que pueden ejecutar `docker compose ps`, `docker compose logs`, etc. sin sudo.
